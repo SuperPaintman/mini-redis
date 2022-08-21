@@ -1,0 +1,5 @@
+ignore:
+    - "**/*_gen.go" # Generated files.
+
+github_checks:
+    annotations: false
