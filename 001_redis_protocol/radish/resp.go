@@ -75,7 +75,7 @@ func AppendUint32(dst []byte, i uint32) []byte {
 // AppendUint64 appends the RESP integer from the 64-bit unsigned integer i
 // to dst and returns the extended buffer.
 func AppendUint64(dst []byte, i uint64) []byte {
-	if i >= 0 && i <= 9 {
+	if i <= 9 {
 		return appendSmall(dst, byte(DataTypeInteger), int(i))
 	}
 	dst = appendType(dst, DataTypeInteger)
