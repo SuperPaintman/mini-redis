@@ -9,7 +9,7 @@ on:
             - master
 
 jobs:
-    build:
+    test:
         runs-on: ${{ matrix.os }}
 
         strategy:
@@ -20,7 +20,7 @@ jobs:
                     # - windows-latest
 
                 go:
-                    - "1.10"
+                    - "1.13"
                     - "1.16"
                     # - "1.17"
                     # - "1.18"
