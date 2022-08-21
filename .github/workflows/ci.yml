@@ -40,8 +40,8 @@ jobs:
               uses: actions/setup-go@v3
               with:
                   go-version: ${{ matrix.go }}
-                  cache: true
-                  cache-dependency-path: ${{ matrix.chapter }}/radish/go.sum
+                  #   cache: true
+                  #   cache-dependency-path: ${{ matrix.chapter }}/radish/go.sum
 
             - run: go version
 
