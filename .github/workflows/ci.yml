@@ -31,7 +31,7 @@ jobs:
 
         defaults:
             run:
-                working-directory: ${{ matrix.chapter }}
+                working-directory: ${{ matrix.chapter }}/radish
 
         steps:
             - uses: actions/checkout@v3
