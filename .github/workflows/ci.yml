@@ -11,6 +11,12 @@ on:
 jobs:
     lint:
         runs-on: ubuntu-latest
+
+        strategy:
+            matrix:
+                chapter:
+                    - 001_redis_protocol
+
         steps:
             - uses: actions/checkout@v3
 
@@ -23,6 +29,7 @@ jobs:
               uses: golangci/golangci-lint-action@v3
               with:
                   version: v1.42
+                  working-directory: ${{ matrix.chapter }}/radish
                   skip-go-installation: true
 
     test:
