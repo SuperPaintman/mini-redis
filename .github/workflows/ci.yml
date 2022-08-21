@@ -71,15 +71,15 @@ jobs:
             matrix:
                 os:
                     - ubuntu-latest
-                    # - macos-latest
-                    # - windows-latest
+                    - macos-latest
+                    - windows-latest
 
                 go:
                     - "1.13"
                     - "1.16"
-                    # - "1.17"
-                    # - "1.18"
-                    # - "1.19"
+                    - "1.17"
+                    - "1.18"
+                    - "1.19"
 
                 chapter: ${{ fromJSON(needs.chapters-list.outputs.list) }}
 
