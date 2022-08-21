@@ -58,7 +58,6 @@ jobs:
               with:
                   version: v1.42
                   working-directory: ${{ matrix.chapter }}/radish
-                  skip-go-installation: true
 
     test:
         needs:
