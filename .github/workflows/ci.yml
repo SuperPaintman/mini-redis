@@ -40,8 +40,6 @@ jobs:
               uses: actions/setup-go@v3
               with:
                   go-version: ${{ matrix.go }}
-                  #   cache: true
-                  #   cache-dependency-path: ${{ matrix.chapter }}/radish/go.sum
 
             - run: go version
 
@@ -53,7 +51,7 @@ jobs:
 
             - uses: codecov/codecov-action@v3
               with:
-                  files: ./coverage
+                  files: ${{ matrix.chapter }}/radish/coverage
                   flags: unittests,${{ matrix.os }},go${{ matrix.go }},${{ matrix.chapter }}
                   fail_ci_if_error: true
                   verbose: true
