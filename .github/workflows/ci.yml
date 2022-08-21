@@ -11,7 +11,6 @@ on:
 jobs:
     build:
         runs-on: ${{ matrix.os }}
-        working-directory: ${{ matrix.chapter }}
 
         strategy:
             matrix:
@@ -35,19 +34,24 @@ jobs:
 
             - name: Set up Go ${{ matrix.go }}
               uses: actions/setup-go@v3
+              working-directory: ${{ matrix.chapter }}
               with:
                   go-version: ${{ matrix.go }}
                   cache: true
 
             - run: go version
+              working-directory: ${{ matrix.chapter }}
 
             - name: Set up Cover cmd
+              working-directory: ${{ matrix.chapter }}
               run: go get golang.org/x/tools/cmd/cover
 
             - name: Run tests
+              working-directory: ${{ matrix.chapter }}
               run: go test -race -covermode=atomic -coverprofile=coverage -v ./...
 
             - uses: codecov/codecov-action@v3
+              working-directory: ${{ matrix.chapter }}
               with:
                   files: ./coverage
                   flags: unittests,${{ matrix.os }},go${{ matrix.go }},${{ matrix.chapter }}
