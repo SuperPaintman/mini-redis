@@ -36,6 +36,9 @@ jobs:
                       return chapters;
 
     lint:
+        needs:
+            - chapters-list
+
         runs-on: ubuntu-latest
 
         strategy:
@@ -59,6 +62,7 @@ jobs:
 
     test:
         needs:
+            - chapters-list
             - lint
 
         runs-on: ${{ matrix.os }}
