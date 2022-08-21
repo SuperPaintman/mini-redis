@@ -1,0 +1,117 @@
+name: CI
+
+on:
+    pull_request:
+        branches:
+            - master
+    push:
+        branches:
+            - master
+
+env:
+    GO111MODULE: "on"
+
+jobs:
+    chapters-list:
+        runs-on: ubuntu-latest
+
+        outputs:
+            list: ${{ steps.list.outputs.result }}
+
+        steps:
+            - uses: actions/checkout@v3
+
+            - uses: actions/github-script@v6
+              id: list
+              with:
+                  script: |
+                      const fs = require('fs');
+                      const { promisify } = require('util');
+
+                      const readdirAsync = promisify(fs.readdir);
+
+                      const files = await readdirAsync('./');
+
+                      const chapters = files.filter((file) => (
+                          /^\d{3}_.+/.test(file)
+                      ));
+
+                      return chapters;
+
+    lint:
+        needs:
+            - chapters-list
+
+        runs-on: ubuntu-latest
+
+        strategy:
+            matrix:
+                chapter: ${{ fromJSON(needs.chapters-list.outputs.list) }}
+
+        steps:
+            - uses: actions/checkout@v3
+
+            - name: Set up Go 1.19
+              uses: actions/setup-go@v3
+              with:
+                  go-version: "1.19"
+
+            - name: Run Go linters
+              uses: golangci/golangci-lint-action@v3
+              with:
+                  version: v1.42
+                  working-directory: ${{ matrix.chapter }}/radish
+
+    test:
+        needs:
+            - chapters-list
+            - lint
+
+        runs-on: ${{ matrix.os }}
+
+        strategy:
+            matrix:
+                os:
+                    - ubuntu-latest
+                    - macos-latest
+                    - windows-latest
+
+                go:
+                    # "1.10" doesn't support modules.
+                    - "1.11"
+                    # ...
+                    - "1.17"
+                    - "1.18"
+                    - "1.19"
+
+                chapter: ${{ fromJSON(needs.chapters-list.outputs.list) }}
+
+        defaults:
+            run:
+                working-directory: ${{ matrix.chapter }}/radish
+
+        steps:
+            - uses: actions/checkout@v3
+
+            - name: Set up Go ${{ matrix.go }}
+              uses: actions/setup-go@v3
+              with:
+                  go-version: ${{ matrix.go }}
+
+            - run: go version
+
+            - name: Download Go dependencies
+              run: go mod download
+
+            - name: Set up Cover cmd
+              run: go get golang.org/x/tools/cmd/cover
+
+            - name: Run tests
+              run: go test -race -covermode=atomic -coverprofile=coverage -v ./...
+
+            - uses: codecov/codecov-action@v3
+              with:
+                  files: ${{ matrix.chapter }}/radish/coverage
+                  flags: unittests,${{ matrix.os }},go${{ matrix.go }},${{ matrix.chapter }}
+                  fail_ci_if_error: true
+                  verbose: true
