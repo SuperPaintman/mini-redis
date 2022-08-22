@@ -5,27 +5,14 @@ import (
 	"testing"
 )
 
-func testAppend(t testing.TB, name string, want []byte, f func([]byte) []byte) {
-	t.Helper()
+var longString string // ~16KB
 
-	buf := make([]byte, 64)
-	got := f(buf[:0])
-
-	if buf[:1][0] == 0 {
-		t.Errorf("%s(): buf was not modified: buf = %q, got = %q",
-			name,
-			buf[:64],
-			got,
-		)
+func init() {
+	for i := 0; i < 16*1024; i++ {
+		longString += "very-"
 	}
 
-	if !bytes.Equal(want, got) {
-		t.Errorf("%s() = %q, want %q",
-			name,
-			got,
-			want,
-		)
-	}
+	longString += "long-string"
 }
 
 func testWriter(t testing.TB, name string, want []byte, f func(*Writer) error) {
@@ -76,16 +63,6 @@ var testSimpleStrings = []struct {
 	},
 }
 
-func TestAppendSimpleString(t *testing.T) {
-	for _, tc := range testSimpleStrings {
-		t.Run(tc.name, func(t *testing.T) {
-			testAppend(t, "AppendSimpleString", tc.want, func(b []byte) []byte {
-				return AppendSimpleString(b, tc.s)
-			})
-		})
-	}
-}
-
 func TestWriter_WriteSimpleString(t *testing.T) {
 	for _, tc := range testSimpleStrings {
 		t.Run(tc.name, func(t *testing.T) {
@@ -118,16 +95,6 @@ var testErrors = []struct {
 		want:       []byte("-ERR\\n\\nBroken\\rerror\t!\r\n"),
 		wantUnsafe: []byte("-ERR\n\nBroken\rerror\t!\r\n"),
 	},
-}
-
-func TestAppendError(t *testing.T) {
-	for _, tc := range testErrors {
-		t.Run(tc.name, func(t *testing.T) {
-			testAppend(t, "AppendError", tc.want, func(b []byte) []byte {
-				return AppendError(b, tc.s)
-			})
-		})
-	}
 }
 
 func TestWriter_WriteError(t *testing.T) {
@@ -167,16 +134,6 @@ var testInts = []struct {
 	},
 }
 
-func TestAppendInt(t *testing.T) {
-	for _, tc := range testInts {
-		t.Run(tc.name, func(t *testing.T) {
-			testAppend(t, "AppendInt", tc.want, func(b []byte) []byte {
-				return AppendInt(b, int(tc.i))
-			})
-		})
-	}
-}
-
 func TestWriter_WriteInt(t *testing.T) {
 	for _, tc := range testInts {
 		t.Run(tc.name, func(t *testing.T) {
@@ -187,30 +144,11 @@ func TestWriter_WriteInt(t *testing.T) {
 	}
 }
 
-func TestAppendInt32(t *testing.T) {
-	for _, tc := range testInts {
-		t.Run(tc.name, func(t *testing.T) {
-			testAppend(t, "AppendInt32", tc.want, func(b []byte) []byte {
-				return AppendInt32(b, int32(tc.i))
-			})
-		})
-	}
-}
-
 func TestWriter_WriteInt32(t *testing.T) {
 	for _, tc := range testInts {
 		t.Run(tc.name, func(t *testing.T) {
 			testWriter(t, "WriteInt32", tc.want, func(w *Writer) error {
 				return w.WriteInt32(int32(tc.i))
-			})
-		})
-	}
-}
-func TestAppendInt64(t *testing.T) {
-	for _, tc := range testInts {
-		t.Run(tc.name, func(t *testing.T) {
-			testAppend(t, "AppendInt64", tc.want, func(b []byte) []byte {
-				return AppendInt64(b, tc.i)
 			})
 		})
 	}
@@ -248,16 +186,6 @@ var testUints = []struct {
 	},
 }
 
-func TestAppendUint(t *testing.T) {
-	for _, tc := range testUints {
-		t.Run(tc.name, func(t *testing.T) {
-			testAppend(t, "AppendUint", tc.want, func(b []byte) []byte {
-				return AppendUint(b, uint(tc.i))
-			})
-		})
-	}
-}
-
 func TestWriter_WriteUint(t *testing.T) {
 	for _, tc := range testUints {
 		t.Run(tc.name, func(t *testing.T) {
@@ -268,31 +196,11 @@ func TestWriter_WriteUint(t *testing.T) {
 	}
 }
 
-func TestAppendUint32(t *testing.T) {
-	for _, tc := range testUints {
-		t.Run(tc.name, func(t *testing.T) {
-			testAppend(t, "AppendUint32", tc.want, func(b []byte) []byte {
-				return AppendUint32(b, uint32(tc.i))
-			})
-		})
-	}
-}
-
 func TestWriter_WriteUint32(t *testing.T) {
 	for _, tc := range testUints {
 		t.Run(tc.name, func(t *testing.T) {
 			testWriter(t, "WriteUint32", tc.want, func(w *Writer) error {
 				return w.WriteUint32(uint32(tc.i))
-			})
-		})
-	}
-}
-
-func TestAppendUint64(t *testing.T) {
-	for _, tc := range testUints {
-		t.Run(tc.name, func(t *testing.T) {
-			testAppend(t, "AppendUint64", tc.want, func(b []byte) []byte {
-				return AppendUint64(b, tc.i)
 			})
 		})
 	}
@@ -330,31 +238,11 @@ var testBulkStrings = []struct {
 	},
 }
 
-func TestAppendString(t *testing.T) {
-	for _, tc := range testBulkStrings {
-		t.Run(tc.name, func(t *testing.T) {
-			testAppend(t, "AppendString", tc.want, func(b []byte) []byte {
-				return AppendString(b, string(tc.b))
-			})
-		})
-	}
-}
-
 func TestWriter_WriteString(t *testing.T) {
 	for _, tc := range testBulkStrings {
 		t.Run(tc.name, func(t *testing.T) {
 			testWriter(t, "WriteString", tc.want, func(w *Writer) error {
 				return w.WriteString(string(tc.b))
-			})
-		})
-	}
-}
-
-func TestAppendBytes(t *testing.T) {
-	for _, tc := range testBulkStrings {
-		t.Run(tc.name, func(t *testing.T) {
-			testAppend(t, "AppendBytes", tc.want, func(b []byte) []byte {
-				return AppendBytes(b, tc.b)
 			})
 		})
 	}
@@ -368,13 +256,6 @@ func TestWriter_WriteBytes(t *testing.T) {
 			})
 		})
 	}
-}
-
-func TestAppendNull(t *testing.T) {
-	want := []byte("$-1\r\n")
-	testAppend(t, "AppendNull", want, func(b []byte) []byte {
-		return AppendNull(b)
-	})
 }
 
 func TestWriter_WriteNull(t *testing.T) {
@@ -406,16 +287,6 @@ var testArrays = []struct {
 	},
 }
 
-func TestAppendArray(t *testing.T) {
-	for _, tc := range testArrays {
-		t.Run(tc.name, func(t *testing.T) {
-			testAppend(t, "AppendArray", tc.want, func(b []byte) []byte {
-				return AppendArray(b, tc.n)
-			})
-		})
-	}
-}
-
 func TestWriter_WriteArray(t *testing.T) {
 	for _, tc := range testArrays {
 		t.Run(tc.name, func(t *testing.T) {
@@ -426,15 +297,34 @@ func TestWriter_WriteArray(t *testing.T) {
 	}
 }
 
-var appendIntRes []byte
+var writerRes []byte
 
-func BenchmarkAppendInt(b *testing.B) {
-	var buf []byte
-
-	for i := 0; i < b.N; i++ {
-		buf = AppendInt(buf, i)
-		buf = buf[:0]
+func BenchmarkWriter(b *testing.B) {
+	bt := []struct {
+		name string
+		s    string
+	}{
+		{"short", "test"},
+		{"long", longString},
 	}
 
-	appendIntRes = buf
+	for _, bc := range bt {
+		b.Run(bc.name, func(b *testing.B) {
+			var buf bytes.Buffer
+			writer := NewWriter(&buf)
+
+			for i := 0; i < b.N; i++ {
+				writer.WriteArray(3)
+				writer.WriteString("SET")
+				writer.WriteString("test")
+				writer.WriteString(bc.s)
+				writer.Flush()
+
+				writerRes = buf.Bytes()
+
+				buf.Reset()
+				writer.Reset(&buf)
+			}
+		})
+	}
 }
