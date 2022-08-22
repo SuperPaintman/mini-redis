@@ -37,12 +37,19 @@ func NewWriter(w io.Writer) *Writer {
 	}
 }
 
+// Reset discards any unflushed buffered data, and resets w to write
+// its output to wr.
 func (w *Writer) Reset(wr io.Writer) {
 	w.smallbuf = w.smallbuf[:0]
 	w.w.Reset(wr)
 }
 
-// WriteSimpleString writes a RESP bulk string.
+// Flush writes any buffered data to the underlying io.Writer.
+func (w *Writer) Flush() error {
+	return w.w.Flush()
+}
+
+// WriteSimpleString writes a RESP simple string.
 func (w *Writer) WriteSimpleString(s string) error {
 	w.writeType(DataTypeSimpleString)
 	w.writeString(s)
@@ -61,29 +68,29 @@ func (w *Writer) WriteInt(i int) error {
 	return w.WriteInt64(int64(i))
 }
 
-// WriteInt32 writes a RESP integer.
+// WriteInt32 writes a RESP 32-bit integer.
 func (w *Writer) WriteInt32(i int32) error {
 	return w.WriteInt64(int64(i))
 }
 
-// WriteInt64 writes a RESP integer.
+// WriteInt64 writes a RESP 64-bit integer.
 func (w *Writer) WriteInt64(i int64) error {
 	w.writeType(DataTypeInteger)
 	w.writeInt(i)
 	return w.writeTerminator()
 }
 
-// WriteUint writes a RESP integer.
+// WriteUint writes a RESP unsigned integer.
 func (w *Writer) WriteUint(i uint) error {
 	return w.WriteUint64(uint64(i))
 }
 
-// WriteUint32 writes a RESP integer.
+// WriteUint32 writes a RESP 32-bit unsigned integer.
 func (w *Writer) WriteUint32(i uint32) error {
 	return w.WriteUint64(uint64(i))
 }
 
-// WriteUint64 writes a RESP integer.
+// WriteUint64 writes a RESP 64-bit unsigned integer.
 func (w *Writer) WriteUint64(i uint64) error {
 	w.writeType(DataTypeInteger)
 	w.writeUint(i)
@@ -97,7 +104,7 @@ func (w *Writer) WriteString(s string) error {
 	return w.writeTerminator()
 }
 
-// WriteBytes writes a RESP bulk string.
+// WriteBytes writes a RESP bulk bytes.
 func (w *Writer) WriteBytes(b []byte) error {
 	w.writePrefix(byte(DataTypeBulkString), len(b))
 	w.w.Write(b)
@@ -181,9 +188,4 @@ func (w *Writer) writeEscapedString(s string) error {
 		}
 	}
 	return err
-}
-
-// Flush writes any buffered data to the underlying io.Writer.
-func (w *Writer) Flush() error {
-	return w.w.Flush()
 }
