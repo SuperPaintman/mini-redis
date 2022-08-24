@@ -67,7 +67,7 @@ func (c *Command) grow(n int) {
 		return
 	}
 
-	// It might be slower than `growSlice` from `buffer` package. But the compiler
+	// It might be slower than growSlice from the buffer package. But the compiler
 	// should recognize this pattern in the future.
 	//
 	// See: https://github.com/golang/go/blob/go1.19/src/bytes/buffer.go#L226-L242
@@ -96,7 +96,7 @@ func (cr *CommandReader) Reset(r io.Reader) {
 // ReadCommand reads and returns a Command from the underlying reader.
 //
 // The returned Command might be reused, the client should not store or modify
-// it ot its fields.
+// it or its fields.
 func (cr *CommandReader) ReadCommand() (cmd *Command, err error) {
 	cmd = newCommand()
 	defer func() {
@@ -106,6 +106,7 @@ func (cr *CommandReader) ReadCommand() (cmd *Command, err error) {
 		}
 	}()
 
+next:
 	// We don't support paint text commands now.
 	// Just try to parse the input as a array.
 	arrayLength, err := cr.readDataTypeLength(DataTypeArray, cmd)
@@ -115,6 +116,11 @@ func (cr *CommandReader) ReadCommand() (cmd *Command, err error) {
 		}
 
 		return cmd, err
+	}
+	// Skip empty commands and read the next one.
+	if arrayLength <= 0 {
+		cmd.reset()
+		goto next
 	}
 
 	if diff := arrayLength - cap(cmd.Args); diff > 0 {
@@ -149,6 +155,9 @@ func (cr *CommandReader) readBulkString(cmd *Command) ([]byte, error) {
 		}
 
 		return nil, err
+	}
+	if bulkLength < 0 {
+		return nil, ErrBulkLength
 	}
 
 	// Parse the bulk string content.
