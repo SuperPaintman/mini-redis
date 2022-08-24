@@ -11,11 +11,11 @@ var (
 	ErrBulkLength      = &Error{"ERR", "Protocol error: invalid bulk length"}
 	ErrMultibulkLength = &Error{"ERR", "Protocol error: invalid multibulk length"}
 
-	errInvalidLength = errors.New("invalid length")
+	errLength = errors.New("invalid length")
 )
 
 const (
-	initialCommandBufSize  = 1024 // 1KB
+	initialCommandRawSize  = 1024 // 1KB
 	initialCommandArgsSize = 4    // More than enough for most of the commands.
 )
 
@@ -44,7 +44,7 @@ func newCommand() *Command {
 		cmd.reset()
 	} else {
 		cmd = &Command{
-			Raw:  make([]byte, 0, initialCommandBufSize),
+			Raw:  make([]byte, 0, initialCommandRawSize),
 			Args: make([]Arg, 0, initialCommandArgsSize),
 		}
 	}
@@ -111,7 +111,7 @@ next:
 	// Just try to parse the input as a array.
 	arrayLength, err := cr.readDataTypeLength(DataTypeArray, cmd)
 	if err != nil {
-		if err == errInvalidLength {
+		if err == errLength {
 			return cmd, ErrMultibulkLength
 		}
 
@@ -150,7 +150,7 @@ func (cr *CommandReader) readBulkString(cmd *Command) ([]byte, error) {
 	// Parse a bulk string length.
 	bulkLength, err := cr.readDataTypeLength(DataTypeBulkString, cmd)
 	if err != nil {
-		if err == errInvalidLength {
+		if err == errLength {
 			return nil, ErrBulkLength
 		}
 
@@ -218,7 +218,7 @@ func (cr *CommandReader) readDataTypeLength(dt DataType, cmd *Command) (int, err
 	}
 
 	if cmd.Raw[len(cmd.Raw)-2] != '\r' || cmd.Raw[len(cmd.Raw)-1] != '\n' {
-		return 0, errInvalidLength
+		return 0, errLength
 	}
 
 	// Parse the line as an integer.
@@ -232,7 +232,7 @@ func (cr *CommandReader) readDataTypeLength(dt DataType, cmd *Command) (int, err
 
 func parseInt(b []byte) (n int, err error) {
 	if len(b) == 0 {
-		return 0, errInvalidLength
+		return 0, errLength
 	}
 
 	var negative bool
@@ -240,7 +240,7 @@ func parseInt(b []byte) (n int, err error) {
 	if b[0] == '-' {
 		negative = true
 		if len(b) < 1 {
-			return 0, errInvalidLength
+			return 0, errLength
 		}
 
 		b = b[1:]
@@ -249,7 +249,7 @@ func parseInt(b []byte) (n int, err error) {
 	for _, ch := range b {
 		ch -= '0'
 		if ch > 9 {
-			return 0, errInvalidLength
+			return 0, errLength
 		}
 		n = n*10 + int(ch)
 	}
