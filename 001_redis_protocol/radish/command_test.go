@@ -2,7 +2,6 @@ package radish
 
 import (
 	"bytes"
-	"errors"
 	"io"
 	"testing"
 )
