@@ -91,7 +91,7 @@ func (cr *CommandReader) ReadCommand() (cmd *Command, err error) {
 
 	// We don't support paint text commands now.
 	// Just try to parse the input as a array.
-	numberOfElements, err := cr.readDataTypeSize(DataTypeArray, cmd)
+	arrayLength, err := cr.readDataTypeLength(DataTypeArray, cmd)
 	if err != nil {
 		if err == errInvalidLength {
 			return cmd, ErrMultibulkLength
@@ -100,13 +100,13 @@ func (cr *CommandReader) ReadCommand() (cmd *Command, err error) {
 		return cmd, err
 	}
 
-	if diff := numberOfElements - cap(cmd.Args); diff > 0 {
+	if diff := arrayLength - cap(cmd.Args); diff > 0 {
 		// Grow the Args slice.
 		cmd.Args = append(cmd.Args, make([]Arg, diff)...)[:len(cmd.Args)]
 	}
 
 	// Parse elements.
-	for i := 0; i < numberOfElements; i++ {
+	for i := 0; i < arrayLength; i++ {
 		arg, err := cr.readBulkString(cmd)
 		if err != nil {
 			return cmd, err
@@ -120,7 +120,7 @@ func (cr *CommandReader) ReadCommand() (cmd *Command, err error) {
 
 func (cr *CommandReader) readBulkString(cmd *Command) ([]byte, error) {
 	// Parse a bulk string length.
-	bulkLength, err := cr.readDataTypeSize(DataTypeBulkString, cmd)
+	bulkLength, err := cr.readDataTypeLength(DataTypeBulkString, cmd)
 	if err != nil {
 		if err == errInvalidLength {
 			return nil, ErrBulkLength
@@ -152,7 +152,7 @@ func (cr *CommandReader) readBulkString(cmd *Command) ([]byte, error) {
 	return cmd.Raw[start : len(cmd.Raw)-2], nil
 }
 
-func (cr *CommandReader) readDataTypeSize(dt DataType, cmd *Command) (int, error) {
+func (cr *CommandReader) readDataTypeLength(dt DataType, cmd *Command) (int, error) {
 	// Length of the string form of the int64 + <marker><CR><LF>.
 	const maxLength = 20 + 3
 
