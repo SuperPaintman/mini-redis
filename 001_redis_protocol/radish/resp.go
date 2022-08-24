@@ -7,11 +7,20 @@ import (
 )
 
 type Error struct {
-	Kind    string
-	Message string
+	Kind string
+	Msg  string
 }
 
-func (e *Error) Error() string { return "radish: " + e.Kind + " " + e.Message }
+func (e *Error) Error() string {
+	msg := e.Msg
+	if msg == "" {
+		msg = "<nil>"
+	}
+	if e.Kind == "" {
+		return "radish: " + msg
+	}
+	return "radish: " + e.Kind + " " + msg
+}
 
 // DataType represents a RESP data type.
 // It is also used as the first byte for RESP representations.
@@ -65,7 +74,7 @@ func (w *Writer) WriteSimpleString(s string) error {
 
 // WriteError writes a RESP error.
 func (w *Writer) WriteError(e *Error) error {
-	return w.WriteRawError(e.Kind, e.Message)
+	return w.WriteRawError(e.Kind, e.Msg)
 }
 
 // WriteError writes the kind and string msg as a RESP error.
