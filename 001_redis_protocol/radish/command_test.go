@@ -133,7 +133,7 @@ func TestCommandReader_ReadCommand(t *testing.T) {
 			}
 
 			rest, err := reader.ReadCommand()
-			if !errors.Is(err, io.EOF) {
+			if err != io.EOF {
 				t.Fatalf("ReadCommand() error = %v, want %v", err, io.EOF)
 			}
 
