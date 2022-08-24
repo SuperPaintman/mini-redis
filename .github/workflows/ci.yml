@@ -108,5 +108,4 @@ jobs:
               with:
                   files: ${{ matrix.chapter }}/radish/coverage
                   flags: unittests,${{ matrix.os }},go${{ matrix.go }},${{ matrix.chapter }}
-                  fail_ci_if_error: true
                   verbose: true
