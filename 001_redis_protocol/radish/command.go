@@ -19,12 +19,20 @@ const (
 	initialCommandArgsSize = 4    // More than enough for most of the commands.
 )
 
+// Arg represents a byte slice of the raw input.
 type Arg []byte
 
+// Bytes creates a new copy of the underlying byte slice and returns it.
 func (a Arg) Bytes() []byte { return append([]byte(nil), a...) }
 
+// Command represents a RESP command.
+//
+// After each reading, the Command can be reused, the client should not store
+// or modify the Command or any of its fields without a full copy.
 type Command struct {
-	Raw  []byte
+	// Raw contains all bytes of the command, including all "\r\n".
+	Raw []byte
+	// Args are bytes slices of the Raw witout "\r\n".
 	Args []Arg
 }
 
@@ -50,6 +58,8 @@ func (c *Command) reset() {
 	}
 }
 
+// grow allocates extra bytes to the Raw if necessary and increases
+// the length of the Raw by n bytes.
 func (c *Command) grow(n int) {
 	// Enough space for reading.
 	if n <= cap(c.Raw)-len(c.Raw) {
@@ -66,20 +76,27 @@ func (c *Command) grow(n int) {
 	c.Raw = append(c.Raw, make([]byte, n)...)
 }
 
+// CommandReader implements a RESP command reader.
 type CommandReader struct {
 	r *bufio.Reader
 }
 
+// NewCommandReader returns a new CommandReader.
 func NewCommandReader(r io.Reader) *CommandReader {
 	return &CommandReader{
 		r: bufio.NewReader(r),
 	}
 }
 
+// Reset discards any buffered data and switches the reader to read from r.
 func (cr *CommandReader) Reset(r io.Reader) {
 	cr.r.Reset(r)
 }
 
+// ReadCommand reads and returns a Command from the underlying reader.
+//
+// The returned Command might be reused, the client should not store or modify
+// it ot its fields.
 func (cr *CommandReader) ReadCommand() (cmd *Command, err error) {
 	cmd = newCommand()
 	defer func() {
@@ -118,6 +135,11 @@ func (cr *CommandReader) ReadCommand() (cmd *Command, err error) {
 	return cmd, err
 }
 
+// readBulkString reads a full RESP bulk string (with the prefix and
+// final "\r\n") and returns only the string content.
+//
+// It uses the cmd as a buffer and puts all read command bytes into the
+// Raw.
 func (cr *CommandReader) readBulkString(cmd *Command) ([]byte, error) {
 	// Parse a bulk string length.
 	bulkLength, err := cr.readDataTypeLength(DataTypeBulkString, cmd)
@@ -152,6 +174,13 @@ func (cr *CommandReader) readBulkString(cmd *Command) ([]byte, error) {
 	return cmd.Raw[start : len(cmd.Raw)-2], nil
 }
 
+// readDataTypeLength reads a length of the data type.
+//
+// It checks the data type prefix and returns an error if it does not
+// match the dt.
+//
+// It uses the cmd as a buffer and puts all read command bytes into the
+// Raw.
 func (cr *CommandReader) readDataTypeLength(dt DataType, cmd *Command) (int, error) {
 	// Length of the string form of the int64 + <marker><CR><LF>.
 	const maxLength = 20 + 3

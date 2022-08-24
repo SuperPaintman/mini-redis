@@ -6,8 +6,12 @@ import (
 	"strconv"
 )
 
+// Error represents a RESP error.
+//
+// If a read error or any other non-standard RESP error occurs, the actual
+// error is returned.
 type Error struct {
-	Kind string
+	Kind string // Optional kind of the error. e.g. ERR, WRONGTYPE, WRONGPASS, etc.
 	Msg  string
 }
 
