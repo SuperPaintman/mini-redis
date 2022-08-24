@@ -6,6 +6,13 @@ import (
 	"strconv"
 )
 
+type Error struct {
+	Kind    string
+	Message string
+}
+
+func (e *Error) Error() string { return "radish: " + e.Kind + " " + e.Message }
+
 // DataType represents a RESP data type.
 // It is also used as the first byte for RESP representations.
 type DataType byte
@@ -51,15 +58,26 @@ func (w *Writer) Flush() error {
 
 // WriteSimpleString writes a RESP simple string.
 func (w *Writer) WriteSimpleString(s string) error {
-	w.writeType(DataTypeSimpleString)
-	w.writeString(s)
+	_ = w.writeType(DataTypeSimpleString)
+	_ = w.writeString(s)
 	return w.writeTerminator()
 }
 
 // WriteError writes a RESP error.
-func (w *Writer) WriteError(s string) error {
-	w.writeType(DataTypeError)
-	w.writeString(s)
+func (w *Writer) WriteError(e *Error) error {
+	return w.WriteRawError(e.Kind, e.Message)
+}
+
+// WriteError writes the kind and string msg as a RESP error.
+func (w *Writer) WriteRawError(kind string, msg string) error {
+	_ = w.writeType(DataTypeError)
+	if kind != "" {
+		_ = w.writeString(kind)
+		if msg != "" {
+			_ = w.w.WriteByte(' ')
+		}
+	}
+	_ = w.writeString(msg)
 	return w.writeTerminator()
 }
 
@@ -75,8 +93,8 @@ func (w *Writer) WriteInt32(i int32) error {
 
 // WriteInt64 writes a RESP 64-bit integer.
 func (w *Writer) WriteInt64(i int64) error {
-	w.writeType(DataTypeInteger)
-	w.writeInt(i)
+	_ = w.writeType(DataTypeInteger)
+	_ = w.writeInt(i)
 	return w.writeTerminator()
 }
 
@@ -92,22 +110,22 @@ func (w *Writer) WriteUint32(i uint32) error {
 
 // WriteUint64 writes a RESP 64-bit unsigned integer.
 func (w *Writer) WriteUint64(i uint64) error {
-	w.writeType(DataTypeInteger)
-	w.writeUint(i)
+	_ = w.writeType(DataTypeInteger)
+	_ = w.writeUint(i)
 	return w.writeTerminator()
 }
 
 // WriteString writes a RESP bulk string.
 func (w *Writer) WriteString(s string) error {
-	w.writePrefix(byte(DataTypeBulkString), len(s))
-	w.w.WriteString(s)
+	_ = w.writePrefix(byte(DataTypeBulkString), len(s))
+	_, _ = w.w.WriteString(s)
 	return w.writeTerminator()
 }
 
 // WriteBytes writes a RESP bulk bytes.
 func (w *Writer) WriteBytes(b []byte) error {
-	w.writePrefix(byte(DataTypeBulkString), len(b))
-	w.w.Write(b)
+	_ = w.writePrefix(byte(DataTypeBulkString), len(b))
+	_, _ = w.w.Write(b)
 	return w.writeTerminator()
 }
 
@@ -154,8 +172,8 @@ func (w *Writer) writeUint(i uint64) error {
 }
 
 func (w *Writer) writePrefix(prefix byte, n int) error {
-	w.w.WriteByte(prefix)
-	w.writeInt(int64(n))
+	_ = w.w.WriteByte(prefix)
+	_ = w.writeInt(int64(n))
 	return w.writeTerminator()
 }
 

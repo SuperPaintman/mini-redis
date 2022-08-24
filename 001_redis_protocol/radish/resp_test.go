@@ -5,14 +5,14 @@ import (
 	"testing"
 )
 
-var longString string // ~16KB
+var longString string // ~64KB
 
 func init() {
 	for i := 0; i < 16*1024; i++ {
-		longString += "very-"
+		longString += "very"
 	}
 
-	longString += "long-string"
+	longString += "-long-string"
 }
 
 func testWriter(t testing.TB, name string, want []byte, f func(*Writer) error) {
@@ -74,26 +74,31 @@ func TestWriter_WriteSimpleString(t *testing.T) {
 }
 
 var testErrors = []struct {
-	name       string
-	s          string
-	want       []byte
-	wantUnsafe []byte
+	name string
+	kind string
+	msg  string
+	want []byte
 }{
 	{
 		name: "empty",
-		s:    "",
 		want: []byte("-\r\n"),
 	},
 	{
 		name: "error",
-		s:    "ERR Protocol error: expected '$', got ' '",
+		kind: "ERR",
+		msg:  "Protocol error: expected '$', got ' '",
 		want: []byte("-ERR Protocol error: expected '$', got ' '\r\n"),
 	},
 	{
-		name:       "with newlines",
-		s:          "ERR\n\nBroken\rerror\t!",
-		want:       []byte("-ERR\\n\\nBroken\\rerror\t!\r\n"),
-		wantUnsafe: []byte("-ERR\n\nBroken\rerror\t!\r\n"),
+		name: "with newlines",
+		kind: "ERR\n",
+		msg:  "\nBroken\rerror\t!",
+		want: []byte("-ERR\\n \\nBroken\\rerror\t!\r\n"),
+	},
+	{
+		name: "without kind",
+		msg:  "Unknown error",
+		want: []byte("-Unknown error\r\n"),
 	},
 }
 
@@ -101,7 +106,17 @@ func TestWriter_WriteError(t *testing.T) {
 	for _, tc := range testErrors {
 		t.Run(tc.name, func(t *testing.T) {
 			testWriter(t, "WriteError", tc.want, func(w *Writer) error {
-				return w.WriteError(tc.s)
+				return w.WriteError(&Error{tc.kind, tc.msg})
+			})
+		})
+	}
+}
+
+func TestWriter_WriteRawError(t *testing.T) {
+	for _, tc := range testErrors {
+		t.Run(tc.name, func(t *testing.T) {
+			testWriter(t, "WriteRawError", tc.want, func(w *Writer) error {
+				return w.WriteRawError(tc.kind, tc.msg)
 			})
 		})
 	}
@@ -313,12 +328,16 @@ func BenchmarkWriter(b *testing.B) {
 			var buf bytes.Buffer
 			writer := NewWriter(&buf)
 
+			b.ResetTimer()
+
 			for i := 0; i < b.N; i++ {
-				writer.WriteArray(3)
-				writer.WriteString("SET")
-				writer.WriteString("test")
-				writer.WriteString(bc.s)
-				writer.Flush()
+				_ = writer.WriteArray(3)
+				_ = writer.WriteString("SET")
+				_ = writer.WriteString("test")
+				_ = writer.WriteString(bc.s)
+				if err := writer.Flush(); err != nil {
+					b.Fatal(err)
+				}
 
 				writerRes = buf.Bytes()
 
