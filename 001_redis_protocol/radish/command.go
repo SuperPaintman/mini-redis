@@ -21,11 +21,7 @@ const (
 
 type Arg []byte
 
-func (a Arg) Bytes() []byte {
-	b := make([]byte, len(a))
-	copy(b, a)
-	return b
-}
+func (a Arg) Bytes() []byte { return append([]byte(nil), a...) }
 
 type Command struct {
 	Raw  []byte
