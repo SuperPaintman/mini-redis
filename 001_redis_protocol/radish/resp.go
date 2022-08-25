@@ -11,19 +11,20 @@ import (
 // If a read error or any other non-standard RESP error occurs, the actual
 // error is returned.
 type Error struct {
-	Kind string // Optional kind of the error. e.g. ERR, WRONGTYPE, WRONGPASS, etc.
+	Kind string // Optional kind of the error (default ERR). e.g. ERR, WRONGTYPE, WRONGPASS, etc.
 	Msg  string
 }
 
 func (e *Error) Error() string {
+	kind := e.Kind
+	if kind == "" {
+		kind = "<nil>"
+	}
 	msg := e.Msg
 	if msg == "" {
 		msg = "<nil>"
 	}
-	if e.Kind == "" {
-		return "radish: " + msg
-	}
-	return "radish: " + e.Kind + " " + msg
+	return "radish: " + kind + " " + msg
 }
 
 // DataType represents a RESP data type.
@@ -36,6 +37,7 @@ const (
 	DataTypeInteger      DataType = ':'
 	DataTypeBulkString   DataType = '$'
 	DataTypeArray        DataType = '*'
+	DataTypeNull         DataType = 0
 )
 
 // Writer implements buffering for an io.Writer object.
@@ -83,14 +85,15 @@ func (w *Writer) WriteError(e *Error) error {
 
 // WriteError writes the kind and string msg as a RESP error.
 func (w *Writer) WriteRawError(kind string, msg string) error {
-	_ = w.writeType(DataTypeError)
-	if kind != "" {
-		_ = w.writeString(kind)
-		if msg != "" {
-			_ = w.w.WriteByte(' ')
-		}
+	if kind == "" {
+		kind = "ERR"
 	}
-	_ = w.writeString(msg)
+	_ = w.writeType(DataTypeError)
+	_ = w.writeString(kind)
+	if msg != "" {
+		_ = w.w.WriteByte(' ')
+		_ = w.writeString(msg)
+	}
 	return w.writeTerminator()
 }
 

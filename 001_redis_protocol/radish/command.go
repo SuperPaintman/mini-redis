@@ -11,7 +11,8 @@ var (
 	ErrBulkLength      = &Error{"ERR", "Protocol error: invalid bulk length"}
 	ErrMultibulkLength = &Error{"ERR", "Protocol error: invalid multibulk length"}
 
-	errLength = errors.New("invalid length")
+	errLength        = errors.New("invalid length")
+	errUnexpectedEOL = errors.New("unexpected EOL")
 )
 
 const (
@@ -93,6 +94,96 @@ func (cr *CommandReader) Reset(r io.Reader) {
 	cr.r.Reset(r)
 }
 
+func (cr *CommandReader) ReadAny() (dt DataType, v interface{}, err error) {
+	first, err := cr.r.ReadByte()
+	if err != nil {
+		return DataTypeNull, nil, err
+	}
+	if err := cr.r.UnreadByte(); err != nil {
+		return DataTypeNull, nil, err
+	}
+
+	dt = DataType(first)
+	switch dt {
+	case DataTypeSimpleString:
+		v, err = cr.ReadSimpleString()
+
+	case DataTypeError:
+		v, err = cr.ReadError()
+
+	case DataTypeInteger:
+		v, err = cr.ReadInt()
+
+	case DataTypeBulkString:
+		var null bool
+		v, null, err = cr.ReadString()
+		if null {
+			v = nil
+			dt = DataTypeNull
+		}
+
+	case DataTypeArray:
+		v, err = cr.ReadArray()
+
+	// DataTypeNull
+
+	default:
+		return DataTypeNull, nil, errors.New("TODO")
+	}
+
+	return dt, v, err
+}
+
+func (cr *CommandReader) ReadSimpleString() (string, error) {
+	line, err := cr.readLine(DataTypeSimpleString, 0, nil)
+	// TODO
+	return string(line), err
+}
+
+func (cr *CommandReader) ReadError() (*Error, error) {
+	line, err := cr.readLine(DataTypeError, 0, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	spacePos := -1
+	for i, ch := range line {
+		if ch == ' ' {
+			spacePos = i
+			break
+		}
+	}
+
+	e := &Error{}
+	if spacePos == -1 {
+		e.Kind = string(line)
+	} else {
+		e.Kind = string(line[:spacePos])
+		e.Msg = string(line[spacePos+1:])
+	}
+
+	return e, nil
+}
+
+func (cr *CommandReader) ReadInt() (int, error) {
+	i, err := cr.readDataTypeLength(DataTypeInteger, nil)
+	// TODO
+	return i, err
+}
+
+func (cr *CommandReader) ReadString() (s string, null bool, err error) {
+	b, null, err := cr.readBulk(nil)
+	return string(b), null, err
+}
+
+func (cr *CommandReader) ReadArray() (int, error) {
+	n, err := cr.readDataTypeLength(DataTypeArray, nil)
+	if err == errLength {
+		err = ErrMultibulkLength
+	}
+	return n, err
+}
+
 // ReadCommand reads and returns a Command from the underlying reader.
 //
 // The returned Command might be reused, the client should not store or modify
@@ -130,9 +221,12 @@ next:
 
 	// Parse elements.
 	for i := 0; i < arrayLength; i++ {
-		arg, err := cr.readBulkString(cmd)
+		arg, null, err := cr.readBulk(cmd)
 		if err != nil {
 			return cmd, err
+		}
+		if null {
+			return cmd, ErrBulkLength
 		}
 
 		cmd.Args = append(cmd.Args, arg)
@@ -141,23 +235,27 @@ next:
 	return cmd, err
 }
 
-// readBulkString reads a full RESP bulk string (with the prefix and
-// final "\r\n") and returns only the string content.
+// readBulk reads a full RESP bulk string (with the prefix and final "\r\n")
+// and returns only the string content.
 //
 // It uses the cmd as a buffer and puts all read command bytes into the
 // Raw.
-func (cr *CommandReader) readBulkString(cmd *Command) ([]byte, error) {
+func (cr *CommandReader) readBulk(cmd *Command) ([]byte, bool, error) {
+	if cmd == nil {
+		cmd = &Command{}
+	}
+
 	// Parse a bulk string length.
 	bulkLength, err := cr.readDataTypeLength(DataTypeBulkString, cmd)
 	if err != nil {
 		if err == errLength {
-			return nil, ErrBulkLength
+			return nil, false, ErrBulkLength
 		}
 
-		return nil, err
+		return nil, false, err
 	}
 	if bulkLength < 0 {
-		return nil, ErrBulkLength
+		return nil, true, nil
 	}
 
 	// Parse the bulk string content.
@@ -170,17 +268,51 @@ func (cr *CommandReader) readBulkString(cmd *Command) ([]byte, error) {
 	for remain > 0 {
 		n, err := cr.r.Read(cmd.Raw[si:])
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		remain -= n
 		si += n
 	}
 
 	if cmd.Raw[len(cmd.Raw)-2] != '\r' || cmd.Raw[len(cmd.Raw)-1] != '\n' {
-		return nil, ErrBulkLength
+		return nil, false, ErrBulkLength
 	}
 
-	return cmd.Raw[start : len(cmd.Raw)-2], nil
+	return cmd.Raw[start : len(cmd.Raw)-2], false, nil
+}
+
+func (cr *CommandReader) readLine(dt DataType, limit int, cmd *Command) ([]byte, error) {
+	if cmd == nil {
+		cmd = &Command{}
+	}
+
+	start := len(cmd.Raw)
+
+	var length int
+	for limit <= 0 || length < limit {
+		frag, err := cr.r.ReadSlice('\n')
+		length += len(frag)
+
+		if err == nil { // Got the final fragment.
+			cmd.Raw = append(cmd.Raw, frag...)
+			break
+		}
+		if err != bufio.ErrBufferFull { // Unexpected error.
+			return nil, err
+		}
+
+		cmd.Raw = append(cmd.Raw, frag...)
+	}
+
+	if ch := cmd.Raw[start]; ch != byte(dt) {
+		return nil, &Error{"ERR", "expected '" + string(dt) + "', got '" + string(ch) + "'"}
+	}
+
+	if cmd.Raw[len(cmd.Raw)-2] != '\r' || cmd.Raw[len(cmd.Raw)-1] != '\n' {
+		return nil, errUnexpectedEOL
+	}
+
+	return cmd.Raw[start+1 : len(cmd.Raw)-2], nil
 }
 
 // readDataTypeLength reads a length of the data type.
@@ -191,38 +323,26 @@ func (cr *CommandReader) readBulkString(cmd *Command) ([]byte, error) {
 // It uses the cmd as a buffer and puts all read command bytes into the
 // Raw.
 func (cr *CommandReader) readDataTypeLength(dt DataType, cmd *Command) (int, error) {
+	if cmd == nil {
+		cmd = newCommand()
+		defer func() {
+			commandPool.Put(cmd)
+		}()
+	}
+
 	// Length of the string form of the int64 + <marker><CR><LF>.
 	const maxLength = 20 + 3
 
-	start := len(cmd.Raw)
-
-	var length int
-	for length < maxLength {
-		frag, err := cr.r.ReadSlice('\n')
-		length += len(frag)
-
-		if err == nil { // Got the final fragment.
-			cmd.Raw = append(cmd.Raw, frag...)
-			break
+	line, err := cr.readLine(dt, maxLength, cmd)
+	if err != nil {
+		if err == errUnexpectedEOL {
+			return 0, errLength
 		}
-		if err != bufio.ErrBufferFull { // Unexpected error.
-			return 0, err
-		}
-
-		cmd.Raw = append(cmd.Raw, frag...)
-	}
-
-	// Validate the line.
-	if ch := cmd.Raw[start]; ch != byte(dt) {
-		return 0, &Error{"ERR", "expected '" + string(dt) + "', got '" + string(ch) + "'"}
-	}
-
-	if cmd.Raw[len(cmd.Raw)-2] != '\r' || cmd.Raw[len(cmd.Raw)-1] != '\n' {
-		return 0, errLength
+		return 0, err
 	}
 
 	// Parse the line as an integer.
-	n, err := parseInt(cmd.Raw[start+1 : len(cmd.Raw)-2])
+	n, err := parseInt(line)
 	if err != nil {
 		return 0, err
 	}

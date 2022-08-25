@@ -3,6 +3,7 @@ package radish
 import (
 	"bytes"
 	"io"
+	"reflect"
 	"testing"
 )
 
@@ -131,13 +132,134 @@ func TestCommandReader_ReadCommand(t *testing.T) {
 				}
 			}
 
-			rest, err := reader.ReadCommand()
+			next, err := reader.ReadCommand()
 			if err != io.EOF {
 				t.Fatalf("ReadCommand() error = %v, want %v", err, io.EOF)
 			}
 
-			if rest != nil {
-				t.Errorf("ReadCommand() returned an extra command: %q", rest.Raw)
+			if next != nil {
+				t.Errorf("ReadCommand() returned an extra command: %q", next.Raw)
+			}
+		})
+	}
+}
+
+func TestCommandReader_ReadAny(t *testing.T) {
+	tt := []struct {
+		name         string
+		input        []byte
+		wantDataType DataType
+		wantValue    interface{}
+	}{
+		{
+			name:         "simple string",
+			input:        []byte("+OK\r\n"),
+			wantDataType: DataTypeSimpleString,
+			wantValue:    "OK",
+		},
+		{
+			name:         "empty simple string",
+			input:        []byte("+\r\n"),
+			wantDataType: DataTypeSimpleString,
+			wantValue:    "",
+		},
+		{
+			name:         "error",
+			input:        []byte("-ERR unknown command 'GO'\r\n"),
+			wantDataType: DataTypeError,
+			wantValue:    &Error{"ERR", "unknown command 'GO'"},
+		},
+		{
+			name:         "error without msg",
+			input:        []byte("-ERR\r\n"),
+			wantDataType: DataTypeError,
+			wantValue:    &Error{"ERR", ""},
+		},
+		{
+			name:         "empty error",
+			input:        []byte("-\r\n"),
+			wantDataType: DataTypeError,
+			wantValue:    &Error{"", ""},
+		},
+		{
+			name:         "integer",
+			input:        []byte(":1337\r\n"),
+			wantDataType: DataTypeInteger,
+			wantValue:    1337,
+		},
+		{
+			name:         "negative integer",
+			input:        []byte(":-1337\r\n"),
+			wantDataType: DataTypeInteger,
+			wantValue:    -1337,
+		},
+		{
+			name:         "bulk string",
+			input:        []byte("$11\r\nhello world\r\n"),
+			wantDataType: DataTypeBulkString,
+			wantValue:    "hello world",
+		},
+		{
+			name:         "empty bulk string",
+			input:        []byte("$0\r\n\r\n"),
+			wantDataType: DataTypeBulkString,
+			wantValue:    "",
+		},
+		{
+			name:         "null",
+			input:        []byte("$-1\r\n"),
+			wantDataType: DataTypeNull,
+			wantValue:    nil,
+		},
+		{
+			name:         "array",
+			input:        []byte("*10\r\n"),
+			wantDataType: DataTypeArray,
+			wantValue:    10,
+		},
+		{
+			name:         "null array",
+			input:        []byte("*-1\r\n"),
+			wantDataType: DataTypeArray,
+			wantValue:    -1,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			input := bytes.NewBuffer(tc.input)
+			reader := NewCommandReader(input)
+
+			dt, v, err := reader.ReadAny()
+			if err != nil {
+				t.Fatalf("ReadAny() returned unexpected error: %v", err)
+			}
+
+			if dt != tc.wantDataType {
+				t.Errorf("ReadCommand() data type = %q, want %q",
+					dt,
+					tc.wantDataType,
+				)
+			}
+
+			if !reflect.DeepEqual(v, tc.wantValue) {
+				t.Errorf("ReadCommand() value = %#v, want %#v",
+					v,
+					tc.wantValue,
+				)
+			}
+
+			nextDataType, nextValue, err := reader.ReadAny()
+			if err != io.EOF {
+				t.Fatalf("ReadAny() error = %v, want %v", err, io.EOF)
+			}
+
+			if nextDataType != DataTypeNull {
+				t.Errorf("ReadAny() returned an extra data type: %q", nextDataType)
+			}
+
+			if nextValue != nil {
+				t.Errorf("ReadAny() returned an extra value: %#v", nextValue)
 			}
 		})
 	}
