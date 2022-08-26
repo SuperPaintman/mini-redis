@@ -77,27 +77,27 @@ func (c *Command) grow(n int) {
 	c.Raw = append(c.Raw, make([]byte, n)...)
 }
 
-// CommandReader implements a RESP command reader.
-type CommandReader struct {
+// Reader implements a RESP reader.
+type Reader struct {
 	r *bufio.Reader
 }
 
-// NewCommandReader returns a new CommandReader.
-func NewCommandReader(r io.Reader) *CommandReader {
-	return &CommandReader{
-		r: bufio.NewReader(r),
+// NewReader returns a new Reader.
+func NewReader(rd io.Reader) *Reader {
+	return &Reader{
+		r: bufio.NewReader(rd),
 	}
 }
 
-// Reset discards any buffered data and switches the reader to read from r.
-func (cr *CommandReader) Reset(r io.Reader) {
-	cr.r.Reset(r)
+// Reset discards any buffered data and switches the reader to read from rd.
+func (r *Reader) Reset(rd io.Reader) {
+	r.r.Reset(rd)
 }
 
-func (cr *CommandReader) ReadAny() (dt DataType, v interface{}, err error) {
-	first, err := cr.r.ReadByte()
+func (r *Reader) ReadAny() (dt DataType, v interface{}, err error) {
+	first, err := r.r.ReadByte()
 	if err == nil {
-		err = cr.r.UnreadByte()
+		err = r.r.UnreadByte()
 	}
 	if err != nil {
 		return DataTypeNull, nil, err
@@ -106,24 +106,24 @@ func (cr *CommandReader) ReadAny() (dt DataType, v interface{}, err error) {
 	dt = DataType(first)
 	switch dt {
 	case DataTypeSimpleString:
-		v, err = cr.ReadSimpleString()
+		v, err = r.ReadSimpleString()
 
 	case DataTypeError:
-		v, err = cr.ReadError()
+		v, err = r.ReadError()
 
 	case DataTypeInteger:
-		v, err = cr.ReadInt()
+		v, err = r.ReadInt()
 
 	case DataTypeBulkString:
 		var null bool
-		v, null, err = cr.ReadString()
+		v, null, err = r.ReadString()
 		if null {
 			v = nil
 			dt = DataTypeNull
 		}
 
 	case DataTypeArray:
-		v, err = cr.ReadArray()
+		v, err = r.ReadArray()
 
 	// DataTypeNull
 
@@ -134,20 +134,20 @@ func (cr *CommandReader) ReadAny() (dt DataType, v interface{}, err error) {
 	return dt, v, err
 }
 
-func (cr *CommandReader) ReadSimpleString() (string, error) {
+func (r *Reader) ReadSimpleString() (string, error) {
 	cmd := newCommand()
 	defer commandPool.Put(cmd)
 
-	line, err := cr.readLine(DataTypeSimpleString, 0, cmd)
+	line, err := r.readLine(DataTypeSimpleString, 0, cmd)
 	// TODO
 	return string(line), err
 }
 
-func (cr *CommandReader) ReadError() (*Error, error) {
+func (r *Reader) ReadError() (*Error, error) {
 	cmd := newCommand()
 	defer commandPool.Put(cmd)
 
-	line, err := cr.readLine(DataTypeError, 0, cmd)
+	line, err := r.readLine(DataTypeError, 0, cmd)
 	if err != nil {
 		return nil, err
 	}
@@ -171,28 +171,28 @@ func (cr *CommandReader) ReadError() (*Error, error) {
 	return e, nil
 }
 
-func (cr *CommandReader) ReadInt() (int, error) {
+func (r *Reader) ReadInt() (int, error) {
 	cmd := newCommand()
 	defer commandPool.Put(cmd)
 
-	i, err := cr.readDataTypeLength(DataTypeInteger, cmd)
+	i, err := r.readDataTypeLength(DataTypeInteger, cmd)
 	// TODO
 	return i, err
 }
 
-func (cr *CommandReader) ReadString() (s string, null bool, err error) {
+func (r *Reader) ReadString() (s string, null bool, err error) {
 	cmd := newCommand()
 	defer commandPool.Put(cmd)
 
-	b, null, err := cr.readBulk(cmd)
+	b, null, err := r.readBulk(cmd)
 	return string(b), null, err
 }
 
-func (cr *CommandReader) ReadArray() (int, error) {
+func (r *Reader) ReadArray() (int, error) {
 	cmd := newCommand()
 	defer commandPool.Put(cmd)
 
-	n, err := cr.readDataTypeLength(DataTypeArray, cmd)
+	n, err := r.readDataTypeLength(DataTypeArray, cmd)
 	if err == errLength {
 		err = ErrMultibulkLength
 	}
@@ -203,7 +203,7 @@ func (cr *CommandReader) ReadArray() (int, error) {
 //
 // The returned Command might be reused, the client should not store or modify
 // it or its fields.
-func (cr *CommandReader) ReadCommand() (cmd *Command, err error) {
+func (r *Reader) ReadCommand() (cmd *Command, err error) {
 	cmd = newCommand()
 	defer func() {
 		if err != nil {
@@ -215,7 +215,7 @@ func (cr *CommandReader) ReadCommand() (cmd *Command, err error) {
 next:
 	// We don't support paint text commands now.
 	// Just try to parse the input as a array.
-	arrayLength, err := cr.readDataTypeLength(DataTypeArray, cmd)
+	arrayLength, err := r.readDataTypeLength(DataTypeArray, cmd)
 	if err != nil {
 		if err == errLength {
 			return cmd, ErrMultibulkLength
@@ -236,7 +236,7 @@ next:
 
 	// Parse elements.
 	for i := 0; i < arrayLength; i++ {
-		arg, null, err := cr.readBulk(cmd)
+		arg, null, err := r.readBulk(cmd)
 		if err != nil {
 			return cmd, err
 		}
@@ -255,9 +255,9 @@ next:
 //
 // It uses the cmd as a buffer and puts all read command bytes into the
 // Raw.
-func (cr *CommandReader) readBulk(cmd *Command) (bulk []byte, null bool, err error) {
+func (r *Reader) readBulk(cmd *Command) (bulk []byte, null bool, err error) {
 	// Parse a bulk string length.
-	bulkLength, err := cr.readDataTypeLength(DataTypeBulkString, cmd)
+	bulkLength, err := r.readDataTypeLength(DataTypeBulkString, cmd)
 	if err != nil {
 		if err == errLength {
 			err = ErrBulkLength
@@ -276,7 +276,7 @@ func (cr *CommandReader) readBulk(cmd *Command) (bulk []byte, null bool, err err
 	cmd.grow(remain)
 
 	for remain > 0 {
-		n, err := cr.r.Read(cmd.Raw[si:])
+		n, err := r.r.Read(cmd.Raw[si:])
 		if err != nil {
 			return nil, false, err
 		}
@@ -291,12 +291,12 @@ func (cr *CommandReader) readBulk(cmd *Command) (bulk []byte, null bool, err err
 	return cmd.Raw[start : len(cmd.Raw)-2], false, nil
 }
 
-func (cr *CommandReader) readLine(dt DataType, limit int, cmd *Command) ([]byte, error) {
+func (r *Reader) readLine(dt DataType, limit int, cmd *Command) ([]byte, error) {
 	start := len(cmd.Raw)
 
 	var length int
 	for limit <= 0 || length < limit {
-		frag, err := cr.r.ReadSlice('\n')
+		frag, err := r.r.ReadSlice('\n')
 		length += len(frag)
 
 		if err == nil { // Got the final fragment.
@@ -328,11 +328,11 @@ func (cr *CommandReader) readLine(dt DataType, limit int, cmd *Command) ([]byte,
 //
 // It uses the cmd as a buffer and puts all read command bytes into the
 // Raw.
-func (cr *CommandReader) readDataTypeLength(dt DataType, cmd *Command) (int, error) {
+func (r *Reader) readDataTypeLength(dt DataType, cmd *Command) (int, error) {
 	// Length of the string form of the int64 + <marker><CR><LF>.
 	const maxLength = 20 + 3
 
-	line, err := cr.readLine(dt, maxLength, cmd)
+	line, err := r.readLine(dt, maxLength, cmd)
 	if err != nil {
 		if err == errUnexpectedEOL {
 			return 0, errLength

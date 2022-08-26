@@ -9,7 +9,7 @@ import (
 	"github.com/SuperPaintman/mini-redis/001_redis_protocol/radish"
 )
 
-func ExampleCommandReader() {
+func ExampleReader() {
 	input := strings.NewReader(
 		"*3\r\n" +
 			"$3\r\n" +
@@ -19,10 +19,10 @@ func ExampleCommandReader() {
 			"$7\r\n" +
 			"myvalue\r\n",
 	)
-	commandReader := radish.NewCommandReader(input)
+	reader := radish.NewReader(input)
 
 	for {
-		cmd, err := commandReader.ReadCommand()
+		cmd, err := reader.ReadCommand()
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -46,7 +46,7 @@ func ExampleCommandReader() {
 	// 2. "myvalue"
 }
 
-func ExampleCommandReader_pipelining() {
+func ExampleReader_pipelining() {
 	input := strings.NewReader(
 		"*2\r\n" +
 			"$3\r\n" +
@@ -61,7 +61,7 @@ func ExampleCommandReader_pipelining() {
 			"$7\r\n" +
 			"myvalue\r\n",
 	)
-	commandReader := radish.NewCommandReader(input)
+	commandReader := radish.NewReader(input)
 
 	for {
 		cmd, err := commandReader.ReadCommand()

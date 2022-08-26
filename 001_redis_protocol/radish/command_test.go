@@ -11,21 +11,21 @@ func buildRawCommand(t testing.TB, args []Arg) []byte {
 	t.Helper()
 
 	var buf bytes.Buffer
-	cr := NewWriter(&buf)
+	writer := NewWriter(&buf)
 
-	_ = cr.WriteArray(len(args))
+	_ = writer.WriteArray(len(args))
 	for _, arg := range args {
-		_ = cr.WriteBytes(arg)
+		_ = writer.WriteBytes(arg)
 	}
 
-	if err := cr.Flush(); err != nil {
+	if err := writer.Flush(); err != nil {
 		t.Fatalf("unexpected error: failed to flush the writer to the buffer: %v", err)
 	}
 
 	return buf.Bytes()
 }
 
-func TestCommandReader_ReadCommand(t *testing.T) {
+func TestReader_ReadCommand(t *testing.T) {
 	type testCase struct {
 		name  string
 		input []byte
@@ -95,7 +95,7 @@ func TestCommandReader_ReadCommand(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			input := bytes.NewBuffer(tc.input)
-			reader := NewCommandReader(input)
+			reader := NewReader(input)
 
 			for i := 0; i < len(tc.want); i++ {
 				got, err := reader.ReadCommand()
@@ -144,7 +144,7 @@ func TestCommandReader_ReadCommand(t *testing.T) {
 	}
 }
 
-func TestCommandReader_ReadAny(t *testing.T) {
+func TestReader_ReadAny(t *testing.T) {
 	tt := []struct {
 		name         string
 		input        []byte
@@ -228,7 +228,7 @@ func TestCommandReader_ReadAny(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			input := bytes.NewBuffer(tc.input)
-			reader := NewCommandReader(input)
+			reader := NewReader(input)
 
 			dt, v, err := reader.ReadAny()
 			if err != nil {
@@ -267,7 +267,7 @@ func TestCommandReader_ReadAny(t *testing.T) {
 
 var readCommandRes *Command
 
-func BenchmarkCommandReader_ReadCommand(b *testing.B) {
+func BenchmarkReader_ReadCommand(b *testing.B) {
 	bt := []struct {
 		name  string
 		input []byte
@@ -293,7 +293,7 @@ func BenchmarkCommandReader_ReadCommand(b *testing.B) {
 	for _, bc := range bt {
 		b.Run(bc.name, func(b *testing.B) {
 			input := bytes.NewReader(bc.input)
-			reader := NewCommandReader(input)
+			reader := NewReader(input)
 
 			b.ResetTimer()
 

@@ -40,12 +40,12 @@ func main() {
 		log.Fatalf("Could not write a command: %s", err)
 	}
 
-	reader := radish.NewCommandReader(conn)
+	reader := radish.NewReader(conn)
 
 	readReaponse(reader, "")
 }
 
-func readReaponse(reader *radish.CommandReader, prefix string) {
+func readReaponse(reader *radish.Reader, prefix string) {
 	dt, v, err := reader.ReadAny()
 	if err != nil {
 		log.Fatalf("Could not read the response: %s", err)
