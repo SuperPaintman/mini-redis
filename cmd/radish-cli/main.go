@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/SuperPaintman/mini-redis/001_redis_protocol/radish"
+	"github.com/SuperPaintman/mini-redis/radish"
 )
 
 var (
