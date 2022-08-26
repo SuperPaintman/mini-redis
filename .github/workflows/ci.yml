@@ -12,41 +12,8 @@ env:
     GO111MODULE: "on"
 
 jobs:
-    chapters-list:
-        runs-on: ubuntu-latest
-
-        outputs:
-            list: ${{ steps.list.outputs.result }}
-
-        steps:
-            - uses: actions/checkout@v3
-
-            - uses: actions/github-script@v6
-              id: list
-              with:
-                  script: |
-                      const fs = require('fs');
-                      const { promisify } = require('util');
-
-                      const readdirAsync = promisify(fs.readdir);
-
-                      const files = await readdirAsync('./');
-
-                      const chapters = files.filter((file) => (
-                          /^\d{3}_.+/.test(file)
-                      ));
-
-                      return chapters;
-
     lint:
-        needs:
-            - chapters-list
-
         runs-on: ubuntu-latest
-
-        strategy:
-            matrix:
-                chapter: ${{ fromJSON(needs.chapters-list.outputs.list) }}
 
         steps:
             - uses: actions/checkout@v3
@@ -60,11 +27,9 @@ jobs:
               uses: golangci/golangci-lint-action@v3
               with:
                   version: v1.42
-                  working-directory: ${{ matrix.chapter }}
 
     test:
         needs:
-            - chapters-list
             - lint
 
         runs-on: ${{ matrix.os }}
@@ -84,12 +49,6 @@ jobs:
                     - "1.18"
                     - "1.19"
 
-                chapter: ${{ fromJSON(needs.chapters-list.outputs.list) }}
-
-        defaults:
-            run:
-                working-directory: ${{ matrix.chapter }}
-
         steps:
             - uses: actions/checkout@v3
 
@@ -106,6 +65,6 @@ jobs:
 
             - uses: codecov/codecov-action@v3
               with:
-                  files: ${{ matrix.chapter }}/coverage
-                  flags: unittests,${{ matrix.os }},go${{ matrix.go }},${{ matrix.chapter }}
+                  files: ./coverage
+                  flags: unittests,${{ matrix.os }},go${{ matrix.go }}
                   verbose: true
