@@ -31,7 +31,7 @@ func (a Arg) Bytes() []byte { return append([]byte(nil), a...) }
 // After each reading, the Command can be reused, the client should not store
 // or modify the Command or any of its fields without a full copy.
 type Command struct {
-	// Raw contains all bytes of the command, including all "\r\n".
+	// Raw contains all bytes of the command, including all prefixes and "\r\n".
 	Raw []byte
 	// Args are bytes slices of the Raw witout "\r\n".
 	Args []Arg
@@ -96,10 +96,10 @@ func (cr *CommandReader) Reset(r io.Reader) {
 
 func (cr *CommandReader) ReadAny() (dt DataType, v interface{}, err error) {
 	first, err := cr.r.ReadByte()
-	if err != nil {
-		return DataTypeNull, nil, err
+	if err == nil {
+		err = cr.r.UnreadByte()
 	}
-	if err := cr.r.UnreadByte(); err != nil {
+	if err != nil {
 		return DataTypeNull, nil, err
 	}
 
@@ -135,13 +135,19 @@ func (cr *CommandReader) ReadAny() (dt DataType, v interface{}, err error) {
 }
 
 func (cr *CommandReader) ReadSimpleString() (string, error) {
-	line, err := cr.readLine(DataTypeSimpleString, 0, nil)
+	cmd := newCommand()
+	defer commandPool.Put(cmd)
+
+	line, err := cr.readLine(DataTypeSimpleString, 0, cmd)
 	// TODO
 	return string(line), err
 }
 
 func (cr *CommandReader) ReadError() (*Error, error) {
-	line, err := cr.readLine(DataTypeError, 0, nil)
+	cmd := newCommand()
+	defer commandPool.Put(cmd)
+
+	line, err := cr.readLine(DataTypeError, 0, cmd)
 	if err != nil {
 		return nil, err
 	}
@@ -166,18 +172,27 @@ func (cr *CommandReader) ReadError() (*Error, error) {
 }
 
 func (cr *CommandReader) ReadInt() (int, error) {
-	i, err := cr.readDataTypeLength(DataTypeInteger, nil)
+	cmd := newCommand()
+	defer commandPool.Put(cmd)
+
+	i, err := cr.readDataTypeLength(DataTypeInteger, cmd)
 	// TODO
 	return i, err
 }
 
 func (cr *CommandReader) ReadString() (s string, null bool, err error) {
-	b, null, err := cr.readBulk(nil)
+	cmd := newCommand()
+	defer commandPool.Put(cmd)
+
+	b, null, err := cr.readBulk(cmd)
 	return string(b), null, err
 }
 
 func (cr *CommandReader) ReadArray() (int, error) {
-	n, err := cr.readDataTypeLength(DataTypeArray, nil)
+	cmd := newCommand()
+	defer commandPool.Put(cmd)
+
+	n, err := cr.readDataTypeLength(DataTypeArray, cmd)
 	if err == errLength {
 		err = ErrMultibulkLength
 	}
@@ -236,22 +251,17 @@ next:
 }
 
 // readBulk reads a full RESP bulk string (with the prefix and final "\r\n")
-// and returns only the string content.
+// and returns only the content.
 //
 // It uses the cmd as a buffer and puts all read command bytes into the
 // Raw.
-func (cr *CommandReader) readBulk(cmd *Command) ([]byte, bool, error) {
-	if cmd == nil {
-		cmd = &Command{}
-	}
-
+func (cr *CommandReader) readBulk(cmd *Command) (bulk []byte, null bool, err error) {
 	// Parse a bulk string length.
 	bulkLength, err := cr.readDataTypeLength(DataTypeBulkString, cmd)
 	if err != nil {
 		if err == errLength {
-			return nil, false, ErrBulkLength
+			err = ErrBulkLength
 		}
-
 		return nil, false, err
 	}
 	if bulkLength < 0 {
@@ -261,7 +271,7 @@ func (cr *CommandReader) readBulk(cmd *Command) ([]byte, bool, error) {
 	// Parse the bulk string content.
 	start := len(cmd.Raw)
 	si := len(cmd.Raw)
-	remain := bulkLength + 2
+	remain := bulkLength + 2 // bulkLength + <CR><LF>
 
 	cmd.grow(remain)
 
@@ -282,10 +292,6 @@ func (cr *CommandReader) readBulk(cmd *Command) ([]byte, bool, error) {
 }
 
 func (cr *CommandReader) readLine(dt DataType, limit int, cmd *Command) ([]byte, error) {
-	if cmd == nil {
-		cmd = &Command{}
-	}
-
 	start := len(cmd.Raw)
 
 	var length int
@@ -323,13 +329,6 @@ func (cr *CommandReader) readLine(dt DataType, limit int, cmd *Command) ([]byte,
 // It uses the cmd as a buffer and puts all read command bytes into the
 // Raw.
 func (cr *CommandReader) readDataTypeLength(dt DataType, cmd *Command) (int, error) {
-	if cmd == nil {
-		cmd = newCommand()
-		defer func() {
-			commandPool.Put(cmd)
-		}()
-	}
-
 	// Length of the string form of the int64 + <marker><CR><LF>.
 	const maxLength = 20 + 3
 
