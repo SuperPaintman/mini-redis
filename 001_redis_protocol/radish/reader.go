@@ -3,6 +3,7 @@ package radish
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 )
@@ -261,7 +262,7 @@ func (r *Reader) ReadAny() (dt DataType, v interface{}, err error) {
 	// DataTypeBulkString.
 
 	default:
-		return DataTypeNull, nil, &Error{"ERR", "Protocol error, got \"" + string(dt) + "\" as reply type byte"}
+		return DataTypeNull, nil, &Error{"ERR", fmt.Sprintf("Protocol error, got %q as reply type byte", string(dt))}
 	}
 
 	return dt, v, err

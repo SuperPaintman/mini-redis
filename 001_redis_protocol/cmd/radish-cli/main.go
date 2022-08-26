@@ -4,7 +4,9 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"net"
+	"strconv"
 	"strings"
 
 	"github.com/SuperPaintman/mini-redis/001_redis_protocol/radish"
@@ -20,7 +22,7 @@ func main() {
 
 	args := flag.Args()
 	if len(args) == 0 {
-		log.Fatal("REPL is not implemented yet")
+		log.Fatal("Interactive mode is not implemented yet")
 	}
 
 	address := fmt.Sprintf("%s:%d", *hostname, *port)
@@ -41,17 +43,14 @@ func main() {
 	}
 
 	reader := radish.NewReader(conn)
-
 	readReaponse(reader, "")
 }
 
-func readReaponse(reader *radish.Reader, prefix string) {
+func readReaponse(reader *radish.Reader, indent string) {
 	dt, v, err := reader.ReadAny()
 	if err != nil {
 		log.Fatalf("Could not read the response: %s", err)
 	}
-
-	fmt.Print(prefix)
 
 	switch dt {
 	case radish.DataTypeSimpleString:
@@ -72,14 +71,17 @@ func readReaponse(reader *radish.Reader, prefix string) {
 		if length == 0 {
 			fmt.Print("(empty array)\n")
 		} else {
-			for i := 0; i < length; i++ {
-				p := ""
-				if i != 0 {
-					// TODO
-					p = strings.Repeat(" ", len(prefix))
-				}
+			prefixWidth := int(math.Log10(float64(length))) + 1
+			prefixFormat := "%" + strconv.Itoa(prefixWidth) + "d) " // "%2d"-like.
+			nextIndent := indent + strings.Repeat(" ", prefixWidth+len(") "))
 
-				readReaponse(reader, fmt.Sprintf("%s%d) ", p, i+1))
+			for i := 0; i < length; i++ {
+				if i != 0 {
+					fmt.Print(indent)
+				}
+				fmt.Printf(prefixFormat, i+1)
+
+				readReaponse(reader, nextIndent)
 			}
 		}
 
