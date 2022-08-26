@@ -94,44 +94,55 @@ func (r *Reader) Reset(rd io.Reader) {
 	r.r.Reset(rd)
 }
 
-func (r *Reader) ReadAny() (dt DataType, v interface{}, err error) {
-	first, err := r.r.ReadByte()
-	if err == nil {
-		err = r.r.UnreadByte()
-	}
+// ReadCommand reads and returns a Command from the underlying reader.
+//
+// The returned Command might be reused, the client should not store or modify
+// it or its fields.
+func (r *Reader) ReadCommand() (cmd *Command, err error) {
+	cmd = newCommand()
+	defer func() {
+		if err != nil {
+			commandPool.Put(cmd)
+			cmd = nil
+		}
+	}()
+
+next:
+	// We don't support paint text commands now.
+	// Just try to parse the input as a array.
+	arrayLength, err := r.readValue(DataTypeArray, cmd)
 	if err != nil {
-		return DataTypeNull, nil, err
-	}
-
-	dt = DataType(first)
-	switch dt {
-	case DataTypeSimpleString:
-		v, err = r.ReadSimpleString()
-
-	case DataTypeError:
-		v, err = r.ReadError()
-
-	case DataTypeInteger:
-		v, err = r.ReadInt()
-
-	case DataTypeBulkString:
-		var null bool
-		v, null, err = r.ReadString()
-		if null {
-			v = nil
-			dt = DataTypeNull
+		if err == errLength {
+			return cmd, ErrMultibulkLength
 		}
 
-	case DataTypeArray:
-		v, err = r.ReadArray()
-
-	// DataTypeNull
-
-	default:
-		return DataTypeNull, nil, errors.New("TODO")
+		return cmd, err
+	}
+	// Skip empty commands and read the next one.
+	if arrayLength <= 0 {
+		cmd.reset()
+		goto next
 	}
 
-	return dt, v, err
+	if diff := arrayLength - cap(cmd.Args); diff > 0 {
+		// Grow the Args slice.
+		cmd.Args = append(cmd.Args, make([]Arg, diff)...)[:len(cmd.Args)]
+	}
+
+	// Parse elements.
+	for i := 0; i < arrayLength; i++ {
+		arg, null, err := r.readBulk(cmd)
+		if err != nil {
+			return cmd, err
+		}
+		if null {
+			return cmd, ErrBulkLength
+		}
+
+		cmd.Args = append(cmd.Args, arg)
+	}
+
+	return cmd, err
 }
 
 func (r *Reader) ReadSimpleString() (string, error) {
@@ -175,7 +186,7 @@ func (r *Reader) ReadInt() (int, error) {
 	cmd := newCommand()
 	defer commandPool.Put(cmd)
 
-	i, err := r.readDataTypeLength(DataTypeInteger, cmd)
+	i, err := r.readValue(DataTypeInteger, cmd)
 	// TODO
 	return i, err
 }
@@ -192,103 +203,51 @@ func (r *Reader) ReadArray() (int, error) {
 	cmd := newCommand()
 	defer commandPool.Put(cmd)
 
-	n, err := r.readDataTypeLength(DataTypeArray, cmd)
+	n, err := r.readValue(DataTypeArray, cmd)
 	if err == errLength {
 		err = ErrMultibulkLength
 	}
 	return n, err
 }
 
-// ReadCommand reads and returns a Command from the underlying reader.
-//
-// The returned Command might be reused, the client should not store or modify
-// it or its fields.
-func (r *Reader) ReadCommand() (cmd *Command, err error) {
-	cmd = newCommand()
-	defer func() {
-		if err != nil {
-			commandPool.Put(cmd)
-			cmd = nil
-		}
-	}()
-
-next:
-	// We don't support paint text commands now.
-	// Just try to parse the input as a array.
-	arrayLength, err := r.readDataTypeLength(DataTypeArray, cmd)
+func (r *Reader) ReadAny() (dt DataType, v interface{}, err error) {
+	first, err := r.r.ReadByte()
+	if err == nil {
+		err = r.r.UnreadByte()
+	}
 	if err != nil {
-		if err == errLength {
-			return cmd, ErrMultibulkLength
-		}
-
-		return cmd, err
-	}
-	// Skip empty commands and read the next one.
-	if arrayLength <= 0 {
-		cmd.reset()
-		goto next
+		return DataTypeNull, nil, err
 	}
 
-	if diff := arrayLength - cap(cmd.Args); diff > 0 {
-		// Grow the Args slice.
-		cmd.Args = append(cmd.Args, make([]Arg, diff)...)[:len(cmd.Args)]
-	}
+	dt = DataType(first)
+	switch dt {
+	case DataTypeSimpleString:
+		v, err = r.ReadSimpleString()
 
-	// Parse elements.
-	for i := 0; i < arrayLength; i++ {
-		arg, null, err := r.readBulk(cmd)
-		if err != nil {
-			return cmd, err
-		}
+	case DataTypeError:
+		v, err = r.ReadError()
+
+	case DataTypeInteger:
+		v, err = r.ReadInt()
+
+	case DataTypeBulkString:
+		var null bool
+		v, null, err = r.ReadString()
 		if null {
-			return cmd, ErrBulkLength
+			v = nil
+			dt = DataTypeNull
 		}
 
-		cmd.Args = append(cmd.Args, arg)
+	case DataTypeArray:
+		v, err = r.ReadArray()
+
+	// DataTypeNull
+
+	default:
+		return DataTypeNull, nil, errors.New("TODO")
 	}
 
-	return cmd, err
-}
-
-// readBulk reads a full RESP bulk string (with the prefix and final "\r\n")
-// and returns only the content.
-//
-// It uses the cmd as a buffer and puts all read command bytes into the
-// Raw.
-func (r *Reader) readBulk(cmd *Command) (bulk []byte, null bool, err error) {
-	// Parse a bulk string length.
-	bulkLength, err := r.readDataTypeLength(DataTypeBulkString, cmd)
-	if err != nil {
-		if err == errLength {
-			err = ErrBulkLength
-		}
-		return nil, false, err
-	}
-	if bulkLength < 0 {
-		return nil, true, nil
-	}
-
-	// Parse the bulk string content.
-	start := len(cmd.Raw)
-	si := len(cmd.Raw)
-	remain := bulkLength + 2 // bulkLength + <CR><LF>
-
-	cmd.grow(remain)
-
-	for remain > 0 {
-		n, err := r.r.Read(cmd.Raw[si:])
-		if err != nil {
-			return nil, false, err
-		}
-		remain -= n
-		si += n
-	}
-
-	if cmd.Raw[len(cmd.Raw)-2] != '\r' || cmd.Raw[len(cmd.Raw)-1] != '\n' {
-		return nil, false, ErrBulkLength
-	}
-
-	return cmd.Raw[start : len(cmd.Raw)-2], false, nil
+	return dt, v, err
 }
 
 func (r *Reader) readLine(dt DataType, limit int, cmd *Command) ([]byte, error) {
@@ -321,21 +280,21 @@ func (r *Reader) readLine(dt DataType, limit int, cmd *Command) ([]byte, error) 
 	return cmd.Raw[start+1 : len(cmd.Raw)-2], nil
 }
 
-// readDataTypeLength reads a length of the data type.
+// readValue reads a value or a length of a given data type.
 //
-// It checks the data type prefix and returns an error if it does not
+// It checks the first byte and returns an error if it does not
 // match the dt.
 //
 // It uses the cmd as a buffer and puts all read command bytes into the
 // Raw.
-func (r *Reader) readDataTypeLength(dt DataType, cmd *Command) (int, error) {
-	// Length of the string form of the int64 + <marker><CR><LF>.
+func (r *Reader) readValue(dt DataType, cmd *Command) (int, error) {
+	// Length of the string form of the <marker> + int64 + <CR><LF>.
 	const maxLength = 20 + 3
 
 	line, err := r.readLine(dt, maxLength, cmd)
 	if err != nil {
 		if err == errUnexpectedEOL {
-			return 0, errLength
+			err = errLength
 		}
 		return 0, err
 	}
@@ -347,6 +306,47 @@ func (r *Reader) readDataTypeLength(dt DataType, cmd *Command) (int, error) {
 	}
 
 	return n, nil
+}
+
+// readBulk reads a full RESP bulk string (with the prefix and final "\r\n")
+// and returns only the content.
+//
+// It uses the cmd as a buffer and puts all read command bytes into the
+// Raw.
+func (r *Reader) readBulk(cmd *Command) (bulk []byte, null bool, err error) {
+	// Parse a bulk string length.
+	bulkLength, err := r.readValue(DataTypeBulkString, cmd)
+	if err != nil {
+		if err == errLength {
+			err = ErrBulkLength
+		}
+		return nil, false, err
+	}
+	if bulkLength < 0 {
+		return nil, true, nil
+	}
+
+	// Parse the bulk string content.
+	start := len(cmd.Raw)
+	si := len(cmd.Raw)
+	remain := bulkLength + 2 // bulkLength + <CR><LF>
+
+	cmd.grow(remain)
+
+	for remain > 0 {
+		n, err := r.r.Read(cmd.Raw[si:])
+		if err != nil {
+			return nil, false, err
+		}
+		remain -= n
+		si += n
+	}
+
+	if cmd.Raw[len(cmd.Raw)-2] != '\r' || cmd.Raw[len(cmd.Raw)-1] != '\n' {
+		return nil, false, ErrBulkLength
+	}
+
+	return cmd.Raw[start : len(cmd.Raw)-2], false, nil
 }
 
 func parseInt(b []byte) (n int, err error) {

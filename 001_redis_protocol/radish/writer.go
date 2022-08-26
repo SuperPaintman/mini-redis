@@ -6,6 +6,19 @@ import (
 	"strconv"
 )
 
+// DataType represents a RESP data type.
+// It is also used as the first byte for RESP representations.
+type DataType byte
+
+const (
+	DataTypeSimpleString DataType = '+'
+	DataTypeError        DataType = '-'
+	DataTypeInteger      DataType = ':'
+	DataTypeBulkString   DataType = '$'
+	DataTypeArray        DataType = '*'
+	DataTypeNull         DataType = 0
+)
+
 // Error represents a RESP error.
 //
 // If a read error or any other non-standard RESP error occurs, the actual
@@ -26,19 +39,6 @@ func (e *Error) Error() string {
 	}
 	return "radish: " + kind + " " + msg
 }
-
-// DataType represents a RESP data type.
-// It is also used as the first byte for RESP representations.
-type DataType byte
-
-const (
-	DataTypeSimpleString DataType = '+'
-	DataTypeError        DataType = '-'
-	DataTypeInteger      DataType = ':'
-	DataTypeBulkString   DataType = '$'
-	DataTypeArray        DataType = '*'
-	DataTypeNull         DataType = 0
-)
 
 // Writer implements buffering for an io.Writer object.
 //
