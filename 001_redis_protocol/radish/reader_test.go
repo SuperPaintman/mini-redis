@@ -158,6 +158,12 @@ func TestReader_ReadAny(t *testing.T) {
 			wantValue:    "OK",
 		},
 		{
+			name:         "simple string with newlines",
+			input:        []byte("+OK\n \r\r\n"),
+			wantDataType: DataTypeSimpleString,
+			wantValue:    "OK\n \r",
+		},
+		{
 			name:         "empty simple string",
 			input:        []byte("+\r\n"),
 			wantDataType: DataTypeSimpleString,
@@ -168,6 +174,12 @@ func TestReader_ReadAny(t *testing.T) {
 			input:        []byte("-ERR unknown command 'GO'\r\n"),
 			wantDataType: DataTypeError,
 			wantValue:    &Error{"ERR", "unknown command 'GO'"},
+		},
+		{
+			name:         "error with newlines",
+			input:        []byte("-ERR unknown\r command\n 'GO'\n\r\n"),
+			wantDataType: DataTypeError,
+			wantValue:    &Error{"ERR", "unknown\r command\n 'GO'\n"},
 		},
 		{
 			name:         "error without msg",

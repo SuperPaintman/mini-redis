@@ -51,7 +51,8 @@ type Writer struct {
 
 // NewWriter returns a new Writer writing RESP data types.
 func NewWriter(w io.Writer) *Writer {
-	const smallbufSize = 20 // Length of the string form of the int64.
+	// Length of the string form of the int64.
+	const smallbufSize = len("-9223372036854775808")
 
 	return &Writer{
 		smallbuf: make([]byte, 0, smallbufSize),

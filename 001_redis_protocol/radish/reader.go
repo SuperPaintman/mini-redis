@@ -10,9 +10,10 @@ import (
 var (
 	ErrBulkLength      = &Error{"ERR", "Protocol error: invalid bulk length"}
 	ErrMultibulkLength = &Error{"ERR", "Protocol error: invalid multibulk length"}
+	ErrIntegerValue    = &Error{"ERR", "Protocol error: invalid integer value"}
 
-	errLength        = errors.New("invalid length")
-	errUnexpectedEOL = errors.New("unexpected EOL")
+	errValue             = errors.New("invalid value")
+	errLineLimitExceeded = errors.New("line limit exceeded")
 )
 
 const (
@@ -112,7 +113,7 @@ next:
 	// Just try to parse the input as a array.
 	arrayLength, err := r.readValue(DataTypeArray, cmd)
 	if err != nil {
-		if err == errLength {
+		if err == errValue {
 			return cmd, ErrMultibulkLength
 		}
 
@@ -150,7 +151,6 @@ func (r *Reader) ReadSimpleString() (string, error) {
 	defer commandPool.Put(cmd)
 
 	line, err := r.readLine(DataTypeSimpleString, 0, cmd)
-	// TODO
 	return string(line), err
 }
 
@@ -182,12 +182,14 @@ func (r *Reader) ReadError() (*Error, error) {
 	return e, nil
 }
 
-func (r *Reader) ReadInt() (int, error) {
+func (r *Reader) ReadInteger() (int, error) {
 	cmd := newCommand()
 	defer commandPool.Put(cmd)
 
 	i, err := r.readValue(DataTypeInteger, cmd)
-	// TODO
+	if err == errValue {
+		err = ErrIntegerValue
+	}
 	return i, err
 }
 
@@ -199,12 +201,12 @@ func (r *Reader) ReadString() (s string, null bool, err error) {
 	return string(b), null, err
 }
 
-func (r *Reader) ReadArray() (int, error) {
+func (r *Reader) ReadArray() (length int, err error) {
 	cmd := newCommand()
 	defer commandPool.Put(cmd)
 
 	n, err := r.readValue(DataTypeArray, cmd)
-	if err == errLength {
+	if err == errValue {
 		err = ErrMultibulkLength
 	}
 	return n, err
@@ -228,7 +230,7 @@ func (r *Reader) ReadAny() (dt DataType, v interface{}, err error) {
 		v, err = r.ReadError()
 
 	case DataTypeInteger:
-		v, err = r.ReadInt()
+		v, err = r.ReadInteger()
 
 	case DataTypeBulkString:
 		var null bool
@@ -241,10 +243,10 @@ func (r *Reader) ReadAny() (dt DataType, v interface{}, err error) {
 	case DataTypeArray:
 		v, err = r.ReadArray()
 
-	// DataTypeNull
+	// DataTypeNull is an internal data type. Nulls are handled by DataTypeBulkString.
 
 	default:
-		return DataTypeNull, nil, errors.New("TODO")
+		return DataTypeNull, nil, &Error{"ERR", "Protocol error, got \"" + string(dt) + "\" as reply type byte"}
 	}
 
 	return dt, v, err
@@ -260,6 +262,10 @@ func (r *Reader) readLine(dt DataType, limit int, cmd *Command) ([]byte, error) 
 
 		if err == nil { // Got the final fragment.
 			cmd.Raw = append(cmd.Raw, frag...)
+
+			if len(frag) < 2 || frag[len(frag)-2] != '\r' { // Not a <CRLF>
+				continue
+			}
 			break
 		}
 		if err != bufio.ErrBufferFull { // Unexpected error.
@@ -269,12 +275,12 @@ func (r *Reader) readLine(dt DataType, limit int, cmd *Command) ([]byte, error) 
 		cmd.Raw = append(cmd.Raw, frag...)
 	}
 
-	if ch := cmd.Raw[start]; ch != byte(dt) {
-		return nil, &Error{"ERR", "expected '" + string(dt) + "', got '" + string(ch) + "'"}
+	if !hasTerminator(cmd.Raw) {
+		return nil, errLineLimitExceeded
 	}
 
-	if cmd.Raw[len(cmd.Raw)-2] != '\r' || cmd.Raw[len(cmd.Raw)-1] != '\n' {
-		return nil, errUnexpectedEOL
+	if ch := cmd.Raw[start]; ch != byte(dt) {
+		return nil, &Error{"ERR", "expected '" + string(dt) + "', got '" + string(ch) + "'"}
 	}
 
 	return cmd.Raw[start+1 : len(cmd.Raw)-2], nil
@@ -288,13 +294,13 @@ func (r *Reader) readLine(dt DataType, limit int, cmd *Command) ([]byte, error) 
 // It uses the cmd as a buffer and puts all read command bytes into the
 // Raw.
 func (r *Reader) readValue(dt DataType, cmd *Command) (int, error) {
-	// Length of the string form of the <marker> + int64 + <CR><LF>.
-	const maxLength = 20 + 3
+	// Length of the string form of the <marker> + int64 + <CRLF>.
+	const maxLength = len(":-9223372036854775808\r\n")
 
 	line, err := r.readLine(dt, maxLength, cmd)
 	if err != nil {
-		if err == errUnexpectedEOL {
-			err = errLength
+		if err == errLineLimitExceeded {
+			err = errValue
 		}
 		return 0, err
 	}
@@ -317,7 +323,7 @@ func (r *Reader) readBulk(cmd *Command) (bulk []byte, null bool, err error) {
 	// Parse a bulk string length.
 	bulkLength, err := r.readValue(DataTypeBulkString, cmd)
 	if err != nil {
-		if err == errLength {
+		if err == errValue {
 			err = ErrBulkLength
 		}
 		return nil, false, err
@@ -329,7 +335,9 @@ func (r *Reader) readBulk(cmd *Command) (bulk []byte, null bool, err error) {
 	// Parse the bulk string content.
 	start := len(cmd.Raw)
 	si := len(cmd.Raw)
-	remain := bulkLength + 2 // bulkLength + <CR><LF>
+
+	const crlfLength = len("\r\n")
+	remain := bulkLength + crlfLength
 
 	cmd.grow(remain)
 
@@ -342,7 +350,7 @@ func (r *Reader) readBulk(cmd *Command) (bulk []byte, null bool, err error) {
 		si += n
 	}
 
-	if cmd.Raw[len(cmd.Raw)-2] != '\r' || cmd.Raw[len(cmd.Raw)-1] != '\n' {
+	if !hasTerminator(cmd.Raw) {
 		return nil, false, ErrBulkLength
 	}
 
@@ -351,7 +359,7 @@ func (r *Reader) readBulk(cmd *Command) (bulk []byte, null bool, err error) {
 
 func parseInt(b []byte) (n int, err error) {
 	if len(b) == 0 {
-		return 0, errLength
+		return 0, errValue
 	}
 
 	var negative bool
@@ -359,7 +367,7 @@ func parseInt(b []byte) (n int, err error) {
 	if b[0] == '-' {
 		negative = true
 		if len(b) < 1 {
-			return 0, errLength
+			return 0, errValue
 		}
 
 		b = b[1:]
@@ -368,7 +376,7 @@ func parseInt(b []byte) (n int, err error) {
 	for _, ch := range b {
 		ch -= '0'
 		if ch > 9 {
-			return 0, errLength
+			return 0, errValue
 		}
 		n = n*10 + int(ch)
 	}
@@ -378,4 +386,8 @@ func parseInt(b []byte) (n int, err error) {
 	}
 
 	return n, nil
+}
+
+func hasTerminator(b []byte) bool {
+	return len(b) > 1 && b[len(b)-2] == '\r' && b[len(b)-1] == '\n'
 }
