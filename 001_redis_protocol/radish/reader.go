@@ -146,6 +146,8 @@ next:
 	return cmd, err
 }
 
+// ReadSimpleString reads and returns a RESP simple string from the underlying
+// reader.
 func (r *Reader) ReadSimpleString() (string, error) {
 	cmd := newCommand()
 	defer commandPool.Put(cmd)
@@ -154,6 +156,10 @@ func (r *Reader) ReadSimpleString() (string, error) {
 	return string(line), err
 }
 
+// ReadError reads and returns a RESP error from the underlying reader.
+//
+// The first word after the "-", up to the first space or newline, is parsed
+// as the kind of error returned.
 func (r *Reader) ReadError() (*Error, error) {
 	cmd := newCommand()
 	defer commandPool.Put(cmd)
@@ -165,7 +171,7 @@ func (r *Reader) ReadError() (*Error, error) {
 
 	spacePos := -1
 	for i, ch := range line {
-		if ch == ' ' {
+		if ch == ' ' || ch == '\n' {
 			spacePos = i
 			break
 		}
@@ -182,6 +188,7 @@ func (r *Reader) ReadError() (*Error, error) {
 	return e, nil
 }
 
+// ReadInteger reads and returns a RESP integer from the underlying reader.
 func (r *Reader) ReadInteger() (int, error) {
 	cmd := newCommand()
 	defer commandPool.Put(cmd)
@@ -193,6 +200,7 @@ func (r *Reader) ReadInteger() (int, error) {
 	return i, err
 }
 
+// ReadString reads and returns a RESP bulk string from the underlying reader.
 func (r *Reader) ReadString() (s string, null bool, err error) {
 	cmd := newCommand()
 	defer commandPool.Put(cmd)
@@ -201,6 +209,8 @@ func (r *Reader) ReadString() (s string, null bool, err error) {
 	return string(b), null, err
 }
 
+// ReadArray reads and returns the length of a RESP array from the underlying
+// reader.
 func (r *Reader) ReadArray() (length int, err error) {
 	cmd := newCommand()
 	defer commandPool.Put(cmd)
@@ -212,6 +222,10 @@ func (r *Reader) ReadArray() (length int, err error) {
 	return n, err
 }
 
+// ReadAny reads and returns a RESP type and its value from the underlying
+// reader.
+//
+// The data type is determined by the first byte.
 func (r *Reader) ReadAny() (dt DataType, v interface{}, err error) {
 	first, err := r.r.ReadByte()
 	if err == nil {
@@ -243,7 +257,8 @@ func (r *Reader) ReadAny() (dt DataType, v interface{}, err error) {
 	case DataTypeArray:
 		v, err = r.ReadArray()
 
-	// DataTypeNull is an internal data type. Nulls are handled by DataTypeBulkString.
+	// DataTypeNull is an internal data type. Nulls are handled by
+	// DataTypeBulkString.
 
 	default:
 		return DataTypeNull, nil, &Error{"ERR", "Protocol error, got \"" + string(dt) + "\" as reply type byte"}
@@ -252,6 +267,12 @@ func (r *Reader) ReadAny() (dt DataType, v interface{}, err error) {
 	return dt, v, err
 }
 
+// readLine reads a full RESP line terminating with <CRLF> and starting with
+// a given data type.
+//
+// It checks the first byte and returns an error if it does not match the dt.
+//
+// It uses the cmd as a buffer and puts all read bytes into the Raw.
 func (r *Reader) readLine(dt DataType, limit int, cmd *Command) ([]byte, error) {
 	start := len(cmd.Raw)
 
@@ -288,11 +309,9 @@ func (r *Reader) readLine(dt DataType, limit int, cmd *Command) ([]byte, error) 
 
 // readValue reads a value or a length of a given data type.
 //
-// It checks the first byte and returns an error if it does not
-// match the dt.
+// It checks the first byte and returns an error if it does not match the dt.
 //
-// It uses the cmd as a buffer and puts all read command bytes into the
-// Raw.
+// It uses the cmd as a buffer and puts all read bytes into the Raw.
 func (r *Reader) readValue(dt DataType, cmd *Command) (int, error) {
 	// Length of the string form of the <marker> + int64 + <CRLF>.
 	const maxLength = len(":-9223372036854775808\r\n")
@@ -314,11 +333,10 @@ func (r *Reader) readValue(dt DataType, cmd *Command) (int, error) {
 	return n, nil
 }
 
-// readBulk reads a full RESP bulk string (with the prefix and final "\r\n")
+// readBulk reads a full RESP bulk string (with the prefix and the <CRLF>)
 // and returns only the content.
 //
-// It uses the cmd as a buffer and puts all read command bytes into the
-// Raw.
+// It uses the cmd as a buffer and puts all read bytes into the Raw.
 func (r *Reader) readBulk(cmd *Command) (bulk []byte, null bool, err error) {
 	// Parse a bulk string length.
 	bulkLength, err := r.readValue(DataTypeBulkString, cmd)
