@@ -6,26 +6,6 @@ import (
 	"strconv"
 )
 
-// Error represents a RESP error.
-//
-// If a read error or any other non-standard RESP error occurs, the actual
-// error is returned.
-type Error struct {
-	Kind string // Optional kind of the error. e.g. ERR, WRONGTYPE, WRONGPASS, etc.
-	Msg  string
-}
-
-func (e *Error) Error() string {
-	msg := e.Msg
-	if msg == "" {
-		msg = "<nil>"
-	}
-	if e.Kind == "" {
-		return "radish: " + msg
-	}
-	return "radish: " + e.Kind + " " + msg
-}
-
 // DataType represents a RESP data type.
 // It is also used as the first byte for RESP representations.
 type DataType byte
@@ -36,7 +16,29 @@ const (
 	DataTypeInteger      DataType = ':'
 	DataTypeBulkString   DataType = '$'
 	DataTypeArray        DataType = '*'
+	DataTypeNull         DataType = 0
 )
+
+// Error represents a RESP error.
+//
+// If a read error or any other non-standard RESP error occurs, the actual
+// error is returned.
+type Error struct {
+	Kind string // Optional kind of the error (default ERR). e.g. ERR, WRONGTYPE, WRONGPASS, etc.
+	Msg  string
+}
+
+func (e *Error) Error() string {
+	kind := e.Kind
+	if kind == "" {
+		kind = "<nil>"
+	}
+	msg := e.Msg
+	if msg == "" {
+		msg = "<nil>"
+	}
+	return "radish: " + kind + " " + msg
+}
 
 // Writer implements buffering for an io.Writer object.
 //
@@ -49,7 +51,8 @@ type Writer struct {
 
 // NewWriter returns a new Writer writing RESP data types.
 func NewWriter(w io.Writer) *Writer {
-	const smallbufSize = 20 // Length of the string form of the int64.
+	// Length of the string form of the int64.
+	const smallbufSize = len("-9223372036854775808")
 
 	return &Writer{
 		smallbuf: make([]byte, 0, smallbufSize),
@@ -83,14 +86,15 @@ func (w *Writer) WriteError(e *Error) error {
 
 // WriteError writes the kind and string msg as a RESP error.
 func (w *Writer) WriteRawError(kind string, msg string) error {
-	_ = w.writeType(DataTypeError)
-	if kind != "" {
-		_ = w.writeString(kind)
-		if msg != "" {
-			_ = w.w.WriteByte(' ')
-		}
+	if kind == "" {
+		kind = "ERR"
 	}
-	_ = w.writeString(msg)
+	_ = w.writeType(DataTypeError)
+	_ = w.writeString(kind)
+	if msg != "" {
+		_ = w.w.WriteByte(' ')
+		_ = w.writeString(msg)
+	}
 	return w.writeTerminator()
 }
 

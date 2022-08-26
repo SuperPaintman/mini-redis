@@ -81,13 +81,13 @@ var testErrors = []struct {
 }{
 	{
 		name: "empty",
-		want: []byte("-\r\n"),
+		want: []byte("-ERR\r\n"),
 	},
 	{
 		name: "error",
-		kind: "ERR",
-		msg:  "Protocol error: expected '$', got ' '",
-		want: []byte("-ERR Protocol error: expected '$', got ' '\r\n"),
+		kind: "WRONGTYPE",
+		msg:  "Operation against a key holding the wrong kind of value",
+		want: []byte("-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"),
 	},
 	{
 		name: "with newlines",
@@ -98,7 +98,7 @@ var testErrors = []struct {
 	{
 		name: "without kind",
 		msg:  "Unknown error",
-		want: []byte("-Unknown error\r\n"),
+		want: []byte("-ERR Unknown error\r\n"),
 	},
 }
 
