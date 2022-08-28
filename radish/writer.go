@@ -45,8 +45,8 @@ func (e *Error) Error() string {
 // After all data has been written, the client should call the Flush method to
 // guarantee all data has been forwarded to the underlying io.Writer
 type Writer struct {
-	smallbuf []byte // A buffer for small values (e.g. results of strconv.AppendInt).
 	w        *bufio.Writer
+	smallbuf []byte // A buffer for small values (e.g. results of strconv.AppendInt).
 }
 
 // NewWriter returns a new Writer writing RESP data types.
@@ -55,15 +55,14 @@ func NewWriter(w io.Writer) *Writer {
 	const smallbufSize = len("-9223372036854775808")
 
 	return &Writer{
-		smallbuf: make([]byte, 0, smallbufSize),
 		w:        bufio.NewWriter(w),
+		smallbuf: make([]byte, 0, smallbufSize),
 	}
 }
 
 // Reset discards any unflushed buffered data, and resets w to write
 // its output to wr.
 func (w *Writer) Reset(wr io.Writer) {
-	w.smallbuf = w.smallbuf[:0]
 	w.w.Reset(wr)
 }
 
@@ -166,28 +165,6 @@ func (w *Writer) writeTerminator() error {
 	return err
 }
 
-func (w *Writer) writeInt(i int64) error {
-	if i >= 0 && i <= 9 {
-		return w.w.WriteByte(byte('0' + i))
-	}
-
-	w.smallbuf = w.smallbuf[:0]
-	w.smallbuf = strconv.AppendInt(w.smallbuf, i, 10)
-	_, err := w.w.Write(w.smallbuf)
-	return err
-}
-
-func (w *Writer) writeUint(i uint64) error {
-	if i <= 9 {
-		return w.w.WriteByte(byte('0' + i))
-	}
-
-	w.smallbuf = w.smallbuf[:0]
-	w.smallbuf = strconv.AppendUint(w.smallbuf, i, 10)
-	_, err := w.w.Write(w.smallbuf)
-	return err
-}
-
 func (w *Writer) writePrefix(prefix byte, n int) error {
 	_ = w.w.WriteByte(prefix)
 	_ = w.writeInt(int64(n))
@@ -222,5 +199,27 @@ func (w *Writer) writeEscapedString(s string) error {
 			err = w.w.WriteByte(ch)
 		}
 	}
+	return err
+}
+
+func (w *Writer) writeInt(i int64) error {
+	if i >= 0 && i <= 9 {
+		return w.w.WriteByte(byte('0' + i))
+	}
+
+	w.smallbuf = w.smallbuf[:0]
+	w.smallbuf = strconv.AppendInt(w.smallbuf, i, 10)
+	_, err := w.w.Write(w.smallbuf)
+	return err
+}
+
+func (w *Writer) writeUint(i uint64) error {
+	if i <= 9 {
+		return w.w.WriteByte(byte('0' + i))
+	}
+
+	w.smallbuf = w.smallbuf[:0]
+	w.smallbuf = strconv.AppendUint(w.smallbuf, i, 10)
+	_, err := w.w.Write(w.smallbuf)
 	return err
 }
