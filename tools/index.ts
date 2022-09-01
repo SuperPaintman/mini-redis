@@ -15,6 +15,33 @@ const top = <T>(arr: T[]): T | null =>
   arr.length > 0 ? arr[arr.length - 1] : null;
 const has = (obj: object, key: string) => obj.hasOwnProperty(key);
 
+/* Init */
+Prism.languages.redis = {
+  number: {
+    pattern: /(\$|\*|:)\-?\d+(?:\\r\\n)/,
+    inside: {
+      keyword: /^(\$|\*|:)/,
+      punctuation: /\\r\\n$/
+    }
+  },
+  string: [
+    {
+      pattern: /(\+|-).+(?:\\r\\n)/,
+      inside: {
+        keyword: /^(\+|-)/,
+        punctuation: /\\r\\n$/
+      }
+    },
+    {
+      pattern: /.+(?:\\r\\n)/,
+      inside: {
+        punctuation: /\\r\\n$/
+      }
+    }
+  ],
+  punctuation: /\\r\\n/
+};
+
 type Tag = {
   enabled: boolean;
   name: string;
@@ -834,6 +861,11 @@ async function main() {
           grammar = Prism.languages.go;
           language = 'go';
           break;
+
+        case 'redis':
+          grammar = Prism.languages.redis;
+          language = 'redis';
+          break;
       }
 
       if (grammar !== null) {
@@ -850,8 +882,22 @@ async function main() {
 
 # Hello
 
-~~~go
-package main
+~~~redis
+*2\\r\\n
+$3\\r\\n
+GET\\r\\n
+$5\\r\\n
+hello\\r\\n
+
+$-1\\r\\n
+
++OK\\r\\n
+:1337\\r\\n
++1337\\r\\n
+-ERR Something went wrong\\r\\n
+
+
+*2\\r\\n$3\\r\\nGET\\r\\n$5\\r\\nhello\\r\\n+OK\\r\\n*2\\r\\n$3\\r\\nGET\\r\\n$5\\r\\nhello\\r\\n
 ~~~
 
 ^snippet radish-cli
