@@ -3,6 +3,9 @@
 import * as fs from 'fs';
 import { join } from 'path';
 import { promisify } from 'util';
+import { marked } from 'marked';
+import * as Prism from 'prismjs';
+import 'prismjs/components/prism-go';
 
 /* Helpers */
 const readFileAsync = promisify(fs.readFile);
@@ -170,8 +173,11 @@ class MagicLineParser {
     this._line = line;
   }
 
-  parse(): MagicLine | null {
-    const marker = this._isMagicLine();
+  parse(marker?: MagicMarker | null): MagicLine | null {
+    if (marker == null) {
+      marker = this._isMagicLine();
+    }
+
     if (marker === null) {
       return null;
     }
@@ -722,31 +728,162 @@ async function main() {
   const file = fileParser.parse(content);
 
   file.enable('Redis Protocol');
-  file.enable('radish-cli');
-  file.enable('radish-cli-writer');
-  file.enable('radish-cli-import-radish');
-  file.enable('radish-cli-readall');
-  file.enable('radish-cli-import-ioutil');
-  file.enable('radish-cli-reader');
-  file.enable('radish-cli-import-ioutil-remove');
-  file.enable('radish-cli-read-response');
-  file.enable('radish-cli-read-response-array');
-  file.enable('radish-cli-read-response-array-import-math');
-  file.enable('radish-cli-read-response-array-import-str');
+  // file.enable('radish-cli');
+  // file.enable('radish-cli-writer');
+  // file.enable('radish-cli-import-radish');
+  // file.enable('radish-cli-readall');
+  // file.enable('radish-cli-import-ioutil');
+  // file.enable('radish-cli-reader');
+  // file.enable('radish-cli-import-ioutil-remove');
+  // file.enable('radish-cli-read-response');
+  // file.enable('radish-cli-read-response-array');
+  // file.enable('radish-cli-read-response-array-import-math');
+  // file.enable('radish-cli-read-response-array-import-str');
 
-  const [start, end] = file.snippetLines('radish-cli-read-response-array') ?? [
+  const [start, end] = file.snippetLines('radish-cli-import-radish') ?? [
     -1, -1
   ];
   const lines = file.lines();
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+  // for (let i = 0; i < lines.length; i++) {
+  //   const line = lines[i];
+  //
+  //   if (i >= start && i < end) {
+  //     console.log(` ${i} > `, line);
+  //   } else {
+  //     console.log(` ${i} | `, line);
+  //   }
+  // }
 
-    if (i >= start && i < end) {
-      console.log(` ${i} > `, line);
-    } else {
-      console.log(` ${i} | `, line);
+  const snippet = lines.slice(start - 1, end + 1).join('\n');
+
+  // const res = Prism.highlight(snippet, Prism.languages.go, 'go');
+
+  // console.log(res.split('\n'));
+
+  marked.use({
+    extensions: [
+      {
+        name: 'codeSnippet',
+        level: 'block',
+        start: (src) => src.match(/\^snippet\s/)?.index,
+        tokenizer(src, tokens) {
+          const match = src.match(/^(\^snippet\s+.+)(?:\n|$)/);
+          if (!match) {
+            return;
+          }
+
+          const magicLine = new MagicLineParser(match[1].slice(1)).parse(
+            MagicMarker.Line
+          );
+          if (!magicLine) {
+            return;
+          }
+
+          const token = {
+            type: 'codeSnippet',
+            raw: match[1],
+            ...magicLine,
+            tokens: []
+          };
+
+          return token;
+        },
+        renderer(token: marked.Tokens.Generic) {
+          const tok = token as marked.Tokens.Generic & MagicLine;
+
+          switch (tok.kind) {
+            case 'snippet': {
+              const name = tok.args[0];
+              if (!name) {
+                // TODO
+                return tok.raw;
+              }
+
+              file.enable(name);
+
+              const [start, end] = file.snippetLines(name) ?? [-1, -1];
+              if (start === -1 || end === -1) {
+                // TODO
+                return tok.raw;
+              }
+
+              const lines = file.lines();
+
+              const snippet = lines.slice(start, end).join('\n');
+
+              const code = Prism.highlight(snippet, Prism.languages.go, 'go');
+
+              return `<pre><code class="language-go">${code}</code></pre>`;
+            }
+
+            default:
+              throw new Error(`Unknown magic line kind: ${quote(tok.kind)}`);
+          }
+        }
+      }
+    ]
+  });
+
+  marked.setOptions({
+    gfm: true,
+    highlight(code, lang) {
+      let grammar: Prism.Grammar | null = null;
+      let language = '';
+      switch (lang) {
+        case 'go':
+          grammar = Prism.languages.go;
+          language = 'go';
+          break;
+      }
+
+      if (grammar !== null) {
+        return Prism.highlight(code, grammar, language);
+      } else {
+        return code;
+      }
     }
-  }
+  });
+
+  const res = marked.parse(`
+
+<link href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism.css" rel="stylesheet" />
+
+# Hello
+
+~~~go
+package main
+~~~
+
+^snippet radish-cli
+
+^snippet radish-cli-writer
+
+^snippet radish-cli-import-radish
+
+^snippet radish-cli-readall
+
+^snippet radish-cli-import-ioutil
+
+^snippet radish-cli-reader
+
+^snippet radish-cli-import-ioutil-remove
+
+^snippet radish-cli-read-response
+
+^snippet radish-cli-read-response-array
+
+# Test
+
+^snippet radish-cli-read-response-array-import-math
+
+# Test
+
+^snippet radish-cli-read-response-array-import-str
+`);
+
+  console.log(res);
+
+  await writeFileAsync(join(__dirname, 'res.html'), res);
 }
 
 if (!module.parent) {
