@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"go/format"
 	"io"
 	"log"
 	"os"
@@ -28,7 +27,7 @@ func main() {
 	file.Enable("Redis Protocol")
 	file.Enable("radish-cli")
 	file.Enable("radish-cli-writer")
-	file.Enable("radish-cli-radish-import")
+	file.Enable("radish-cli-import-radish")
 	file.Enable("radish-cli-readall")
 	file.Enable("radish-cli-import-ioutil")
 	file.Enable("radish-cli-reader")
@@ -38,7 +37,11 @@ func main() {
 	file.Enable("radish-cli-read-response-array-import-math")
 	file.Enable("radish-cli-read-response-array-import-str")
 
+	start, end, ok := file.SnippetLines("radish-cli-read-response-array")
+	fmt.Printf("start = %d | end = %d | ok = %v\n", start, end, ok)
+
 	var source bytes.Buffer
+	var lineID int
 	for _, line := range file.lines {
 		if line.endTag {
 			continue
@@ -50,16 +53,24 @@ func main() {
 			}
 		}
 
+		if ok && lineID >= start && lineID < end {
+			fmt.Fprintf(&source, "%4d > ", lineID+1)
+		} else {
+			fmt.Fprintf(&source, "%4d | ", lineID+1)
+		}
+		lineID++
+
 		_, _ = source.Write(line.text)
 	}
 	res := source.Bytes()
 
-	res, err = format.Source(res)
-	if err != nil {
-		log.Fatalf("Could not format the source code: %s", err)
-	}
+	// res, err = format.Source(res)
+	// if err != nil {
+	// 	log.Fatalf("Could not format the source code: %s", err)
+	// }
 
 	fmt.Printf("%s", res)
+
 }
 
 type tag interface {
@@ -139,6 +150,81 @@ func (f *File) Disable(name string) {
 
 	default:
 		panic("unknown tag type")
+	}
+}
+
+func (f *File) SnippetLines(name string) (start, end int, ok bool) {
+	start = -1
+	end = -1
+
+	var (
+		i      int
+		lineID int
+	)
+
+	for ; i < len(f.lines); i++ {
+		l := f.lines[i]
+
+		if l.tag != "" {
+			if tag, ok := f.tags[l.tag]; !ok || !tag.Enabled() {
+				continue
+			}
+		}
+
+		if l.endTag {
+			continue
+		}
+
+		lineID++
+
+		if l.tag == name {
+			start = lineID - 1
+			break
+		}
+	}
+
+	if start == -1 {
+		return -1, -1, false
+	}
+
+	for ; i < len(f.lines); i++ {
+		l := f.lines[i]
+
+		if l.tag != "" {
+			if tag, ok := f.tags[l.tag]; !ok || !tag.Enabled() {
+				continue
+			}
+		}
+
+		if !l.endTag {
+			lineID++
+			continue
+		}
+
+		if l.tag == name {
+			end = lineID - 1
+			break
+		}
+	}
+
+	if end == -1 {
+		return -1, -1, false
+	}
+
+	return start, end, true
+}
+
+func (f *File) doEnabledLines(fn func(l *line) (next bool)) {
+	for _, line := range f.lines {
+		if line.tag == "" {
+			if tag, ok := f.tags[line.tag]; !ok || !tag.Enabled() {
+				continue
+			}
+		}
+
+		if !fn(&line) {
+			break
+		}
 	}
 }
 
@@ -361,6 +447,18 @@ func (p *FileParser) Parse() (*File, error) {
 		default:
 			panic("unknown marker: " + string(marker))
 		}
+	}
+
+	for {
+		prev, ok := file.popTag()
+		if !ok {
+			break
+		}
+
+		file.lines = append(file.lines, line{
+			endTag: true,
+			tag:    prev.Name(),
+		})
 	}
 
 	return file, nil

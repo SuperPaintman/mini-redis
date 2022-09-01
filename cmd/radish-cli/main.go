@@ -24,10 +24,10 @@ import (
 
 	//^ remove-lines: before=1
 	//< snippet radish-cli-read-response-array-import-str
-	//> snippet radish-cli-radish-import
+	//> snippet radish-cli-import-radish
 
 	"github.com/SuperPaintman/mini-redis/radish"
-	//< snippet radish-cli-radish-import
+	//< snippet radish-cli-import-radish
 )
 
 var (
