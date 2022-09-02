@@ -24,7 +24,7 @@ const (
 	DataTypeBulkString   DataType = '$'
 	DataTypeArray        DataType = '*'
 	//> snippet writer-data-type-null
-	DataTypeNull DataType = 0
+	DataTypeNull DataType = '_'
 
 //^ remove-lines: before=1
 //< snippet writer-data-type-null

@@ -1,23 +1,41 @@
 //> stage "Redis Protocol"
+//> snippet reader
 package radish
 
 import (
 	"bufio"
+	//> snippet reader-import-errors
 	"errors"
+	//< snippet reader-import-errors
+	//> snippet reader-import-fmt
 	"fmt"
+	//< snippet reader-import-fmt
 	"io"
+	//> snippet reader-import-sync
 	"sync"
+	//< snippet reader-import-sync
 )
 
+//> snippet reader-errors
 var (
-	ErrBulkLength      = &Error{"ERR", "Protocol error: invalid bulk length"}
 	ErrMultibulkLength = &Error{"ERR", "Protocol error: invalid multibulk length"}
-	ErrIntegerValue    = &Error{"ERR", "Protocol error: invalid integer value"}
+	//> snippet reader-error-bulk-length
+	ErrBulkLength = &Error{"ERR", "Protocol error: invalid bulk length"}
+	//< snippet reader-error-bulk-length
+	//> snippet reader-error-integer-value
+	ErrIntegerValue = &Error{"ERR", "Protocol error: invalid integer value"}
+	//< snippet reader-error-integer-value
 
-	errValue             = errors.New("invalid value")
+	errValue = errors.New("invalid value")
+	//> snippet reader-error-line-limit-exceeded
 	errLineLimitExceeded = errors.New("line limit exceeded")
+	//< snippet reader-error-line-limit-exceeded
 )
 
+//< snippet reader-errors
+//^ remove-lines: after=1
+
+//> snippet reader-command
 const (
 	initialCommandRawSize  = 1024 // 1KB
 	initialCommandArgsSize = 4    // More than enough for most of the commands.
@@ -40,6 +58,7 @@ type Command struct {
 	Args []Arg
 }
 
+//> snippet reader-command-pool
 var commandPool sync.Pool
 
 func newCommand() *Command {
@@ -55,6 +74,9 @@ func newCommand() *Command {
 	return cmd
 }
 
+//< snippet reader-command-pool
+//^ remove-lines: after=1
+
 func (c *Command) reset() {
 	*c = Command{
 		Raw:  c.Raw[:0],
@@ -62,6 +84,7 @@ func (c *Command) reset() {
 	}
 }
 
+//> snippet reader-command-grow
 // grow allocates extra bytes to the Raw if necessary and increases
 // the length of the Raw by n bytes.
 func (c *Command) grow(n int) {
@@ -80,6 +103,12 @@ func (c *Command) grow(n int) {
 	c.Raw = append(c.Raw, make([]byte, n)...)
 }
 
+//< snippet reader-command-grow
+//^ remove-lines: after=1
+
+//< snippet reader-command
+//^ remove-lines: after=1
+
 // Reader implements a RESP reader.
 type Reader struct {
 	r *bufio.Reader
@@ -97,11 +126,20 @@ func (r *Reader) Reset(rd io.Reader) {
 	r.r.Reset(rd)
 }
 
+//> snippet reader-read-command
 // ReadCommand reads and returns a Command from the underlying reader.
 //
 // The returned Command might be reused, the client should not store or modify
 // it or its fields.
 func (r *Reader) ReadCommand() (cmd *Command, err error) {
+	//> snippet reader-read-command-cmd: uncomment-lines
+	// cmd = &Command{
+	// 	Raw:  make([]byte, 0, initialCommandRawSize),
+	// 	Args: make([]Arg, 0, initialCommandArgsSize),
+	// }
+	//
+	//< snippet reader-read-command-cmd
+	//> snippet reader-read-command-from-pool replaces reader-read-command-cmd
 	cmd = newCommand()
 	defer func() {
 		if err != nil {
@@ -110,8 +148,10 @@ func (r *Reader) ReadCommand() (cmd *Command, err error) {
 		}
 	}()
 
+	//< snippet reader-read-command-from-pool
+	//> snippet reader-read-command-array-length
 next:
-	// We don't support paint text commands now.
+	// We don't support plain text commands now.
 	// Just try to parse the input as a array.
 	arrayLength, err := r.readValue(DataTypeArray, cmd)
 	if err != nil {
@@ -127,11 +167,15 @@ next:
 		goto next
 	}
 
+	//< snippet reader-read-command-array-length
+	//> snippet reader-read-command-preallocate-args
 	if diff := arrayLength - cap(cmd.Args); diff > 0 {
 		// Grow the Args slice.
 		cmd.Args = append(cmd.Args, make([]Arg, diff)...)[:len(cmd.Args)]
 	}
 
+	//< snippet reader-read-command-preallocate-args
+	//> snippet reader-read-command-parse-elements
 	// Parse elements.
 	for i := 0; i < arrayLength; i++ {
 		arg, null, err := r.readBulk(cmd)
@@ -145,9 +189,14 @@ next:
 		cmd.Args = append(cmd.Args, arg)
 	}
 
+	//< snippet reader-read-command-parse-elements
 	return cmd, err
 }
 
+//< snippet reader-read-command
+//^ remove-lines: after=1
+
+//> snippet reader-read-simple-string
 // ReadSimpleString reads and returns a RESP simple string from the underlying
 // reader.
 func (r *Reader) ReadSimpleString() (string, error) {
@@ -158,6 +207,10 @@ func (r *Reader) ReadSimpleString() (string, error) {
 	return string(line), err
 }
 
+//< snippet reader-read-simple-string
+//^ remove-lines: after=1
+
+//> snippet reader-read-error
 // ReadError reads and returns a RESP error from the underlying reader.
 //
 // The first word after the "-", up to the first space or newline, is parsed
@@ -190,6 +243,10 @@ func (r *Reader) ReadError() (*Error, error) {
 	return e, nil
 }
 
+//< snippet reader-read-error
+//^ remove-lines: after=1
+
+//> snippet reader-read-integer
 // ReadInteger reads and returns a RESP integer from the underlying reader.
 func (r *Reader) ReadInteger() (int, error) {
 	cmd := newCommand()
@@ -202,6 +259,10 @@ func (r *Reader) ReadInteger() (int, error) {
 	return i, err
 }
 
+//< snippet reader-read-integer
+//^ remove-lines: after=1
+
+//> snippet reader-read-string
 // ReadString reads and returns a RESP bulk string from the underlying reader.
 func (r *Reader) ReadString() (s string, null bool, err error) {
 	cmd := newCommand()
@@ -211,6 +272,10 @@ func (r *Reader) ReadString() (s string, null bool, err error) {
 	return string(b), null, err
 }
 
+//< snippet reader-read-string
+//^ remove-lines: after=1
+
+//> snippet reader-read-array
 // ReadArray reads and returns the length of a RESP array from the underlying
 // reader.
 func (r *Reader) ReadArray() (length int, err error) {
@@ -224,6 +289,10 @@ func (r *Reader) ReadArray() (length int, err error) {
 	return n, err
 }
 
+//< snippet reader-read-array
+//^ remove-lines: after=1
+
+//> snippet reader-read-any
 // ReadAny reads and returns a RESP type and its value from the underlying
 // reader.
 //
@@ -269,6 +338,10 @@ func (r *Reader) ReadAny() (dt DataType, v interface{}, err error) {
 	return dt, v, err
 }
 
+//< snippet reader-read-any
+//^ remove-lines: after=1
+
+//> snippet reader-read-line
 // readLine reads a full RESP line terminating with <CRLF> and starting with
 // a given data type.
 //
@@ -309,6 +382,10 @@ func (r *Reader) readLine(dt DataType, limit int, cmd *Command) ([]byte, error) 
 	return cmd.Raw[start+1 : len(cmd.Raw)-2], nil
 }
 
+//< snippet reader-read-line
+//^ remove-lines: after=1
+
+//> snippet reader-read-value
 // readValue reads a value or a length of a given data type.
 //
 // It checks the first byte and returns an error if it does not match the dt.
@@ -335,6 +412,10 @@ func (r *Reader) readValue(dt DataType, cmd *Command) (int, error) {
 	return n, nil
 }
 
+//< snippet reader-read-value
+//^ remove-lines: after=1
+
+//> snippet reader-read-bulk
 // readBulk reads a full RESP bulk string (with the prefix and the <CRLF>)
 // and returns only the content.
 //
@@ -377,6 +458,10 @@ func (r *Reader) readBulk(cmd *Command) (bulk []byte, null bool, err error) {
 	return cmd.Raw[start : len(cmd.Raw)-2], false, nil
 }
 
+//< snippet reader-read-bulk
+//^ remove-lines: after=1
+
+//> snippet reader-parse-int
 func parseInt(b []byte) (n int, err error) {
 	if len(b) == 0 {
 		return 0, errValue
@@ -408,6 +493,15 @@ func parseInt(b []byte) (n int, err error) {
 	return n, nil
 }
 
+//< snippet reader-parse-int
+//^ remove-lines: after=1
+
+//> snippet reader-has-terminator
 func hasTerminator(b []byte) bool {
 	return len(b) > 1 && b[len(b)-2] == '\r' && b[len(b)-1] == '\n'
 }
+
+//< snippet reader-has-terminator
+//^ remove-lines: after=1
+
+//< snippet reader

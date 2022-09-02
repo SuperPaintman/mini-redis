@@ -1371,13 +1371,13 @@ $-1\\r\\n
 
 ^snippet writer-write-int
 
-^snippet writer-import-strconv
+^snippet writer-import-strconv: before=1, after=1
 
-^snippet writer-writer-smallbuf-field
+^snippet writer-writer-smallbuf-field: before=2, after=1
 
-^snippet writer-writer-smallbuf-size
+^snippet writer-writer-smallbuf-size: before=1, after=1
 
-^snippet writer-writer-smallbuf-init
+^snippet writer-writer-smallbuf-init: before=2, after=2
 
 ^snippet writer-write-uints
 
@@ -1390,6 +1390,66 @@ $-1\\r\\n
 ^snippet writer-write-null
 
 ^snippet writer-write-array
+
+# Reader
+
+^snippet reader
+
+^snippet reader-command
+
+^snippet reader-read-command
+
+^snippet reader-read-command-cmd: before=1, after=2
+
+^snippet reader-read-command-array-length: before=3, after=2
+
+^snippet reader-errors
+
+^snippet reader-import-errors: before=1, after=1
+
+^snippet reader-read-value
+
+^snippet reader-error-line-limit-exceeded: before=1, after=1
+
+^snippet reader-read-line
+
+^snippet reader-has-terminator
+
+^snippet reader-parse-int
+
+^snippet reader-read-command-parse-elements: before=3, after=2
+
+^snippet reader-error-bulk-length: before=1, after=2
+
+^snippet reader-read-bulk
+
+^snippet reader-command-grow
+
+^snippet reader-command-pool
+
+^snippet reader-import-sync: before=1, after=1
+
+^snippet reader-read-command-from-pool: before=1, after=4
+
+^snippet reader-read-command-preallocate-args: before=3, after=2
+
+^snippet reader-read-simple-string
+
+^snippet reader-read-error
+
+^snippet reader-read-integer
+
+^snippet reader-error-integer-value: before=1, after=2
+
+^snippet reader-read-string
+
+^snippet reader-read-array
+
+^snippet reader-read-any
+
+^snippet reader-import-fmt: before=1, after=1
+
+^snippet writer-data-type-null: before=1, after=1
 
 hello
 `);
