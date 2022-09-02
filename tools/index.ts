@@ -6,6 +6,8 @@ import { promisify } from 'util';
 import { marked } from 'marked';
 import * as Prism from 'prismjs';
 import 'prismjs/components/prism-go';
+import Parser from 'tree-sitter';
+const Golang = require('tree-sitter-go');
 
 /* Helpers */
 const readFileAsync = promisify(fs.readFile);
@@ -349,7 +351,7 @@ class MagicLineParser {
       const valid =
         (ch >= 'a' && ch <= 'z') ||
         (ch >= 'A' && ch <= 'Z') ||
-        (ch >= '0' && ch <= '1') ||
+        (ch >= '0' && ch <= '9') ||
         ch == '-' ||
         ch == '_';
 
@@ -744,6 +746,307 @@ function uncommentLine(line: string): string {
   return prefix + suffix;
 }
 
+type GoDeclaration = (
+  | {
+      kind: 'package';
+    }
+  | {
+      kind: 'func';
+      name: string;
+      parent: GoDeclaration;
+    }
+  | {
+      kind: 'method';
+      name: string;
+      receiver: string;
+      parent: GoDeclaration;
+    }
+  | {
+      kind: 'type';
+      name: string;
+      parent: GoDeclaration;
+    }
+  | {
+      kind: 'const';
+      name: string;
+      parent: GoDeclaration;
+    }
+  | {
+      kind: 'var';
+      name: string;
+      parent: GoDeclaration;
+    }
+) & {
+  level: number;
+  children: GoDeclaration[];
+  start: Parser.Point;
+  end: Parser.Point;
+};
+
+class GoContext {
+  constructor(
+    readonly root: GoDeclaration,
+    private _declarations: GoDeclaration[]
+  ) {}
+}
+
+class GoContextVisitor {
+  private _declarations: GoDeclaration[] = [];
+  private _stack: GoDeclaration[] = [];
+
+  constructor() {}
+
+  visit(node: Parser.SyntaxNode): GoContext {
+    this._reset();
+
+    assertNodeType(node, 'source_file');
+
+    const pkg: GoDeclaration = {
+      kind: 'package',
+      children: [],
+      level: 0,
+      start: node.startPosition,
+      end: node.endPosition
+    };
+    this._declarations.push(pkg);
+    this._stack.push(pkg);
+
+    this._visit(node);
+
+    const root = this._stack.pop();
+    if (root === undefined || root.kind !== 'package') {
+      throw new Error('Broken Go declaration stack');
+    }
+
+    return new GoContext(root, this._declarations);
+  }
+
+  private _reset(): void {
+    this._declarations = [];
+    this._stack = [];
+  }
+
+  private _visit(node: Parser.SyntaxNode) {
+    switch (node.type) {
+      case 'function_declaration':
+        this._visitFunctionDeclaration(node);
+        break;
+
+      case 'method_declaration':
+        this._visitMethodDeclaration(node);
+        break;
+
+      case 'type_spec':
+        this._visitTypeSpec(node);
+        break;
+
+      case 'const_spec':
+        this._visitConstSpec(node);
+        break;
+
+      case 'var_spec':
+        this._visitVarSpec(node);
+        break;
+
+      default:
+        this._visitChildren(node);
+        break;
+    }
+  }
+
+  private _visitFunctionDeclaration(node: Parser.SyntaxNode): void {
+    assertNodeType(node.child(0), 'func');
+    const identifier = assertNodeType(node.child(1), 'identifier');
+    assertNodeType(node.child(2), 'parameter_list');
+
+    let retType: Parser.SyntaxNode | null = node.child(3);
+    let block: Parser.SyntaxNode | null = node.child(4);
+    if (retType !== null && retType.type == 'block') {
+      block = retType;
+      retType = null;
+    }
+
+    const decl: GoDeclaration = {
+      kind: 'func',
+      name: identifier.text,
+      parent: top(this._stack)!,
+      children: [],
+      level: this._stack.length,
+      start: node.startPosition,
+      end: node.endPosition
+    };
+    top(this._stack)!.children.push(decl);
+    this._declarations.push(decl);
+    this._stack.push(decl);
+
+    if (block !== null) {
+      assertNodeType(block, 'block');
+
+      this._visitChildren(block);
+    }
+
+    this._stack.pop();
+  }
+
+  private _visitMethodDeclaration(node: Parser.SyntaxNode): void {
+    assertNodeType(node.child(0), 'func');
+    const receiver = assertNodeType(node.child(1), 'parameter_list');
+    const identifier = assertNodeType(node.child(2), 'field_identifier');
+    assertNodeType(node.child(3), 'parameter_list');
+
+    let retType: Parser.SyntaxNode | null = node.child(4);
+    let block: Parser.SyntaxNode | null = node.child(5);
+    if (retType !== null && retType.type == 'block') {
+      block = retType;
+      retType = null;
+    }
+
+    assertNodeType(receiver.child(0), '(');
+    const receiverInner = assertNodeType(
+      receiver.child(1),
+      'parameter_declaration'
+    );
+    assertNodeType(receiver.child(2), ')');
+
+    let receiverIdentifier = receiverInner.child(0);
+    let receiverType = receiverInner.child(1);
+    if (receiverType === null) {
+      receiverType = receiverIdentifier;
+      receiverIdentifier = null;
+    }
+
+    receiverType = assertNodeType(receiverType);
+
+    const decl: GoDeclaration = {
+      kind: 'method',
+      name: identifier.text,
+      receiver: receiverType.text,
+      parent: top(this._stack)!,
+      level: this._stack.length,
+      children: [],
+      start: node.startPosition,
+      end: node.endPosition
+    };
+    top(this._stack)!.children.push(decl);
+    this._declarations.push(decl);
+    this._stack.push(decl);
+
+    if (block !== null) {
+      assertNodeType(block, 'block');
+
+      this._visitChildren(block);
+    }
+
+    this._stack.pop();
+  }
+
+  private _visitTypeSpec(node: Parser.SyntaxNode): void {
+    const identifier = assertNodeType(node.child(0), 'type_identifier');
+
+    const decl: GoDeclaration = {
+      kind: 'type',
+      name: identifier.text,
+      parent: top(this._stack)!,
+      level: this._stack.length,
+      children: [],
+      start: node.startPosition,
+      end: node.endPosition
+    };
+    top(this._stack)!.children.push(decl);
+    this._declarations.push(decl);
+    this._stack.push(decl);
+
+    for (const child of node.children.slice(1)) {
+      this._visit(child);
+    }
+
+    this._stack.pop();
+  }
+
+  private _visitConstSpec(node: Parser.SyntaxNode): void {
+    const identifier = assertNodeType(node.child(0), 'identifier');
+
+    const decl: GoDeclaration = {
+      kind: 'const',
+      name: identifier.text,
+      parent: top(this._stack)!,
+      level: this._stack.length,
+      children: [],
+      start: node.startPosition,
+      end: node.endPosition
+    };
+    top(this._stack)!.children.push(decl);
+    this._declarations.push(decl);
+    this._stack.push(decl);
+
+    for (const child of node.children.slice(1)) {
+      this._visit(child);
+    }
+
+    this._stack.pop();
+  }
+
+  private _visitVarSpec(node: Parser.SyntaxNode): void {
+    const identifier = assertNodeType(node.child(0), 'identifier');
+
+    const decl: GoDeclaration = {
+      kind: 'var',
+      name: identifier.text,
+      parent: top(this._stack)!,
+      level: this._stack.length,
+      children: [],
+      start: node.startPosition,
+      end: node.endPosition
+    };
+    top(this._stack)!.children.push(decl);
+    this._declarations.push(decl);
+    this._stack.push(decl);
+
+    for (const child of node.children.slice(1)) {
+      this._visit(child);
+    }
+
+    this._stack.pop();
+  }
+
+  private _visitChildren(node: Parser.SyntaxNode): void {
+    for (const child of node.children) {
+      this._visit(child);
+    }
+  }
+}
+
+function assertNodeType(
+  node: Parser.SyntaxNode | null,
+  type: string | string[] | undefined = undefined
+): Parser.SyntaxNode {
+  if (type === undefined) {
+    if (node === null) {
+      throw new Error(`Expected any non-null node, got null node`);
+    }
+
+    return node;
+  }
+
+  const expected =
+    typeof type === 'string' ? quote(type) : type.map(quote).join(' or ');
+
+  if (node === null) {
+    throw new Error(`Expected ${expected}, got null node`);
+  }
+
+  const ok =
+    typeof type === 'string'
+      ? node.type === type
+      : type.some((t) => node.type === t);
+
+  if (!ok) {
+    throw new Error(`Expected ${expected}, got ${quote(node.type)}`);
+  }
+
+  return node;
+}
+
 async function main() {
   const content = await readFileAsync(
     join(__dirname, '..', 'cmd', 'radish-cli', 'main.go'),
@@ -766,22 +1069,6 @@ async function main() {
   // file.enable('radish-cli-read-response-array');
   // file.enable('radish-cli-read-response-array-import-math');
   // file.enable('radish-cli-read-response-array-import-str');
-
-  const [start, end] = file.snippetLines('radish-cli-import-radish') ?? [
-    -1, -1
-  ];
-  const lines = file.lines();
-  // for (let i = 0; i < lines.length; i++) {
-  //   const line = lines[i];
-  //
-  //   if (i >= start && i < end) {
-  //     console.log(` ${i} > `, line);
-  //   } else {
-  //     console.log(` ${i} | `, line);
-  //   }
-  // }
-
-  const snippet = lines.slice(start - 1, end + 1).join('\n');
 
   // const res = Prism.highlight(snippet, Prism.languages.go, 'go');
 
@@ -828,19 +1115,56 @@ async function main() {
 
               file.enable(name);
 
-              const [start, end] = file.snippetLines(name) ?? [-1, -1];
-              if (start === -1 || end === -1) {
+              const pos = file.snippetLines(name);
+              if (!pos) {
                 // TODO
                 return tok.raw;
+              }
+              const [start, end] = pos;
+
+              const before = parseInt(tok.options.before ?? '0', 10);
+              if (isNaN(before)) {
+                throw new Error('Broken before options');
+              }
+
+              const after = parseInt(tok.options.after ?? '0', 10);
+              if (isNaN(after)) {
+                throw new Error('Broken after options');
               }
 
               const lines = file.lines();
 
-              const snippet = lines.slice(start, end).join('\n');
+              const snippet = lines
+                .slice(start - before, end + after)
+                .join('\n');
 
               const code = Prism.highlight(snippet, Prism.languages.go, 'go');
 
-              return `<pre><code class="language-go">${code}</code></pre>`;
+              if (before === 0 && after === 0) {
+                return `<pre><code class="language-go">${code}</code></pre>`;
+              }
+
+              const codeLines = code.split('\n');
+              const linesBefore = codeLines.slice(0, before);
+              const linesHighlighted = codeLines.slice(before, -1 * after);
+              const linesAfter = codeLines.slice(-1 * after);
+
+              let res = '<pre><code class="language-go">';
+              if (linesBefore.length > 0) {
+                res += `<div class="dimmed">${linesBefore.join('\n')}\n</div>`;
+              }
+
+              res += `<div class="highlighted">${linesHighlighted.join(
+                '\n'
+              )}\n</div>`;
+
+              if (linesAfter.length > 0) {
+                res += `<div class="dimmed">${linesAfter.join('\n')}\n</div>`;
+              }
+
+              res += '</pre></code>';
+
+              return res;
             }
 
             default:
@@ -854,33 +1178,52 @@ async function main() {
   marked.setOptions({
     gfm: true,
     highlight(code, lang) {
-      let grammar: Prism.Grammar | null = null;
-      let language = '';
-      switch (lang) {
-        case 'go':
-          grammar = Prism.languages.go;
-          language = 'go';
-          break;
+      const grammar = Prism.languages[lang];
 
-        case 'redis':
-          grammar = Prism.languages.redis;
-          language = 'redis';
-          break;
-      }
-
-      if (grammar !== null) {
-        return Prism.highlight(code, grammar, language);
-      } else {
+      if (!grammar) {
         return code;
       }
+
+      return Prism.highlight(code, grammar, lang);
     }
   });
 
   const res = marked.parse(`
 
+<style>
+
+pre {
+  background-color: #faf8f5;
+}
+
+pre > code {
+  text-shadow: none !important;
+}
+
+pre > code .dimmed,
+pre > code .dimmed .token {
+  color: #bab8b7 !important;
+}
+
+pre > code .highlighted {
+  margin: -2px -12px;
+  padding: 2px 10px;
+
+  border-left: solid 2px #dad8d6;
+  border-right: solid 2px #dad8d6;
+
+  background-color: #f5f3f0;
+}
+
+</style>
+
 <link href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism.css" rel="stylesheet" />
 
 # Hello
+
+~~~go
+// HI
+~~~
 
 ~~~redis
 *2\\r\\n
@@ -902,34 +1245,68 @@ $-1\\r\\n
 
 ^snippet radish-cli
 
-^snippet radish-cli-writer
+^snippet radish-cli-writer: before=1, after=1
 
-^snippet radish-cli-import-radish
+^snippet radish-cli-import-radish: before=1, after=1
 
-^snippet radish-cli-readall
+^snippet radish-cli-readall: before=2, after=1
 
-^snippet radish-cli-import-ioutil
+^snippet radish-cli-import-ioutil: before=1, after=1
 
-^snippet radish-cli-reader
+^snippet radish-cli-reader: before=2, after=1
 
 ^snippet radish-cli-import-ioutil-remove
 
 ^snippet radish-cli-read-response
 
-^snippet radish-cli-read-response-array
+^snippet radish-cli-read-response-array: before=3, after=2
 
 # Test
 
-^snippet radish-cli-read-response-array-import-math
+^snippet radish-cli-read-response-array-import-math: before=1, after=1
 
 # Test
 
-^snippet radish-cli-read-response-array-import-str
+^snippet radish-cli-read-response-array-import-str: before=1, after=2
+
+
+hello
 `);
 
   console.log(res);
 
-  await writeFileAsync(join(__dirname, 'res.html'), res);
+  await writeFileAsync(
+    join(__dirname, 'res.html'),
+    `<html><body>${res}</body></html>`
+  );
+
+  const parser = new Parser();
+  parser.setLanguage(Golang);
+
+  const tree = parser.parse(file.lines().join('\n'));
+  // const tree = parser.parse(tmpSrc);
+
+  // console.log(tree.rootNode.type);
+  //
+  const visitor = new GoContextVisitor();
+  const ctx = visitor.visit(tree.rootNode);
+
+  // console.dir(ctx.root, { depth: 10 });
+  //
+
+  // const lines = file.lines();
+  // for (let i = 0; i < lines.length; i++) {
+  //   const line = lines[i];
+
+  //   console.log(` ${i} | `, line);
+  // }
+
+  // const [start, end] = file.snippetLines(
+  //   'radish-cli-read-response-array-import-math'
+  // ) ?? [-1, -1];
+  // console.log(start, end);
+
+  // console.log(tree.rootNode.toString());
 }
 
 if (!module.parent) {
