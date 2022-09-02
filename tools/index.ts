@@ -1355,10 +1355,6 @@ $-1\\r\\n
 
 ^snippet writer-data-types
 
-^snippet writer-writer
-
-^snippet writer-import-bufio
-
 ^snippet writer-write-simple-string
 
 ^snippet writer-write-type

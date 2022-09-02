@@ -2,7 +2,6 @@
 //> snippet writer
 package radish
 
-//> snippet writer-import-bufio
 import (
 	"bufio"
 	"io"
@@ -12,9 +11,6 @@ import (
 	"strconv"
 	//< snippet writer-import-strconv
 )
-
-//< snippet writer-import-bufio
-//^ remove-lines: after=1
 
 //> snippet writer-data-types
 // DataType represents a RESP data type.
@@ -62,7 +58,6 @@ func (e *Error) Error() string {
 //< snippet writer-error
 //^ remove-lines: after=1
 
-//> snippet writer-writer
 // Writer implements buffering for an io.Writer object.
 //
 // After all data has been written, the client should call the Flush method to
@@ -99,9 +94,6 @@ func (w *Writer) Reset(wr io.Writer) {
 func (w *Writer) Flush() error {
 	return w.w.Flush()
 }
-
-//< snippet writer-writer
-//^ remove-lines: after=1
 
 //> snippet writer-write-simple-string
 // WriteSimpleString writes a RESP simple string.
