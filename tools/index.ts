@@ -1,8 +1,9 @@
 'use strict';
 /* Imports */
 import * as fs from 'fs';
-import { join } from 'path';
+import { join, relative } from 'path';
 import { promisify } from 'util';
+import glob from 'glob';
 import { marked } from 'marked';
 import * as Prism from 'prismjs';
 import 'prismjs/components/prism-go';
@@ -12,6 +13,7 @@ const Golang = require('tree-sitter-go');
 /* Helpers */
 const readFileAsync = promisify(fs.readFile);
 const writeFileAsync = promisify(fs.writeFile);
+const globAsync = promisify(glob);
 const quote = (s: string): string => JSON.stringify(s);
 const top = <T>(arr: T[]): T | null =>
   arr.length > 0 ? arr[arr.length - 1] : null;
@@ -80,7 +82,19 @@ type MagicLine = {
 };
 
 class File {
-  constructor(private _lines: Line[], private _tags: Record<string, Tag>) {}
+  constructor(
+    private _path: string,
+    private _lines: Line[],
+    private _tags: Record<string, Tag>
+  ) {}
+
+  path(): string {
+    return this._path;
+  }
+
+  tags(): Record<string, Tag> {
+    return this._tags;
+  }
 
   lines(): string[] {
     const res: string[] = [];
@@ -486,7 +500,7 @@ function skipWhitespaces(line: string, start: number): number {
 }
 
 class FileParser {
-  parse(source: string): File {
+  parse(path: string, source: string): File {
     const stack: Tag[] = [];
     const tags: Record<string, Tag> = {};
     let lines: Line[] = [];
@@ -723,7 +737,7 @@ class FileParser {
       });
     }
 
-    return new File(lines, tags);
+    return new File(path, lines, tags);
   }
 }
 
@@ -744,6 +758,52 @@ function uncommentLine(line: string): string {
   }
 
   return prefix + suffix;
+}
+
+class Workspace {
+  private _tags: Record<string, File> = {};
+  private _files: Record<string, File> = {};
+
+  constructor() {}
+
+  addFile(file: File): this {
+    const tags = file.tags();
+
+    for (const [name, _] of Object.entries(tags)) {
+      this._tags[name] = file;
+    }
+
+    this._files[file.path()] = file;
+
+    return this;
+  }
+
+  file(name: string): File | null {
+    if (!has(this._tags, name)) {
+      // TODO.
+      return null;
+    }
+
+    return this._tags[name];
+  }
+
+  enable(name: string): void {
+    if (!has(this._tags, name)) {
+      // TODO.
+      return;
+    }
+
+    this._tags[name].enable(name);
+  }
+
+  disable(name: string): void {
+    if (!has(this._tags, name)) {
+      // TODO.
+      return;
+    }
+
+    this._tags[name].disable(name);
+  }
 }
 
 type GoDeclaration = (
@@ -1048,27 +1108,35 @@ function assertNodeType(
 }
 
 async function main() {
-  const content = await readFileAsync(
-    join(__dirname, '..', 'cmd', 'radish-cli', 'main.go'),
-    'utf-8'
+  const sourceFiles = await globAsync(
+    join(__dirname, '..', '{cmd,radish}', '**', '*.go')
   );
 
+  const workspace = new Workspace();
   const fileParser = new FileParser();
 
-  const file = fileParser.parse(content);
+  for (const path of sourceFiles) {
+    const content = await readFileAsync(path, 'utf-8');
 
-  file.enable('Redis Protocol');
-  // file.enable('radish-cli');
-  // file.enable('radish-cli-writer');
-  // file.enable('radish-cli-import-radish');
-  // file.enable('radish-cli-readall');
-  // file.enable('radish-cli-import-ioutil');
-  // file.enable('radish-cli-reader');
-  // file.enable('radish-cli-import-ioutil-remove');
-  // file.enable('radish-cli-read-response');
-  // file.enable('radish-cli-read-response-array');
-  // file.enable('radish-cli-read-response-array-import-math');
-  // file.enable('radish-cli-read-response-array-import-str');
+    const filename = relative(join(__dirname, '..'), path);
+
+    const file = fileParser.parse(filename, content);
+
+    workspace.addFile(file);
+  }
+
+  workspace.enable('Redis Protocol');
+  // project.enable('radish-cli');
+  // project.enable('radish-cli-writer');
+  // project.enable('radish-cli-import-radish');
+  // project.enable('radish-cli-readall');
+  // project.enable('radish-cli-import-ioutil');
+  // project.enable('radish-cli-reader');
+  // project.enable('radish-cli-import-ioutil-remove');
+  // project.enable('radish-cli-read-response');
+  // project.enable('radish-cli-read-response-array');
+  // project.enable('radish-cli-read-response-array-import-math');
+  // project.enable('radish-cli-read-response-array-import-str');
 
   // const res = Prism.highlight(snippet, Prism.languages.go, 'go');
 
@@ -1113,7 +1181,13 @@ async function main() {
                 return tok.raw;
               }
 
-              file.enable(name);
+              workspace.enable(name);
+
+              const file = workspace.file(name);
+              if (file === null) {
+                // TODO
+                return tok.raw;
+              }
 
               const pos = file.snippetLines(name);
               if (!pos) {
@@ -1140,29 +1214,35 @@ async function main() {
 
               const code = Prism.highlight(snippet, Prism.languages.go, 'go');
 
+              let res: string = '';
+
               if (before === 0 && after === 0) {
-                return `<pre><code class="language-go">${code}</code></pre>`;
+                res += `<pre><code class="language-go">${code}</code></pre>`;
+              } else {
+                const codeLines = code.split('\n');
+                const linesBefore = codeLines.slice(0, before);
+                const linesHighlighted = codeLines.slice(before, -1 * after);
+                const linesAfter = codeLines.slice(-1 * after);
+
+                res += '<pre><code class="language-go">';
+                if (linesBefore.length > 0) {
+                  res += `<div class="dimmed">${linesBefore.join(
+                    '\n'
+                  )}\n</div>`;
+                }
+
+                res += `<div class="highlighted">${linesHighlighted.join(
+                  '\n'
+                )}\n</div>`;
+
+                if (linesAfter.length > 0) {
+                  res += `<div class="dimmed">${linesAfter.join('\n')}\n</div>`;
+                }
+
+                res += '</pre></code>';
               }
 
-              const codeLines = code.split('\n');
-              const linesBefore = codeLines.slice(0, before);
-              const linesHighlighted = codeLines.slice(before, -1 * after);
-              const linesAfter = codeLines.slice(-1 * after);
-
-              let res = '<pre><code class="language-go">';
-              if (linesBefore.length > 0) {
-                res += `<div class="dimmed">${linesBefore.join('\n')}\n</div>`;
-              }
-
-              res += `<div class="highlighted">${linesHighlighted.join(
-                '\n'
-              )}\n</div>`;
-
-              if (linesAfter.length > 0) {
-                res += `<div class="dimmed">${linesAfter.join('\n')}\n</div>`;
-              }
-
-              res += '</pre></code>';
+              res += `<div><em>${file.path()}</em></div>`;
 
               return res;
             }
@@ -1269,11 +1349,56 @@ $-1\\r\\n
 
 ^snippet radish-cli-read-response-array-import-str: before=1, after=2
 
+# Writer
+
+^snippet writer
+
+^snippet writer-data-types
+
+^snippet writer-writer
+
+^snippet writer-import-bufio
+
+^snippet writer-write-simple-string
+
+^snippet writer-write-type
+
+^snippet writer-write-string
+
+^snippet writer-write-terminator
+
+^snippet writer-error
+
+^snippet writer-write-error
+
+^snippet writer-write-ints
+
+^snippet writer-write-int
+
+^snippet writer-import-strconv
+
+^snippet writer-writer-smallbuf-field
+
+^snippet writer-writer-smallbuf-size
+
+^snippet writer-writer-smallbuf-init
+
+^snippet writer-write-uints
+
+^snippet writer-write-uint
+
+^snippet writer-write-bulk
+
+^snippet writer-write-prefix
+
+^snippet writer-write-null
+
+^snippet writer-write-array
 
 hello
 `);
 
-  console.log(res);
+  // console.log(res);
 
   await writeFileAsync(
     join(__dirname, 'res.html'),
@@ -1283,13 +1408,13 @@ hello
   const parser = new Parser();
   parser.setLanguage(Golang);
 
-  const tree = parser.parse(file.lines().join('\n'));
+  // const tree = parser.parse(file.lines().join('\n'));
   // const tree = parser.parse(tmpSrc);
 
   // console.log(tree.rootNode.type);
   //
-  const visitor = new GoContextVisitor();
-  const ctx = visitor.visit(tree.rootNode);
+  // const visitor = new GoContextVisitor();
+  // const ctx = visitor.visit(tree.rootNode);
 
   // console.dir(ctx.root, { depth: 10 });
   //
