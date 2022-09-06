@@ -8,10 +8,16 @@ type Token = string | { type: string; content: Token | Token[] };
 
 /* Helpers */
 const raw = String.raw;
+const tokenize = (text: string) => Prism.tokenize(text, Prism.languages.redis);
 const token = (type: string, content: Token | Token[]): Token => ({
   type,
   content
 });
+const string = (content: Token | Token[]) => token('string', content);
+const number = (content: Token | Token[]) => token('number', content);
+const keyword = (content: Token | Token[]) => token('keyword', content);
+const punctuation = (content: Token | Token[]) => token('punctuation', content);
+const crlf = punctuation(raw`\r\n`);
 
 describe('Prism', () => {
   describe('Redis', () => {
@@ -19,97 +25,59 @@ describe('Prism', () => {
       Prism.tokenize(raw`+OK\r\n`, Prism.languages.redis);
     });
 
-    it('should parse a simple string', () => {
-      const tokens = Prism.tokenize(raw`+OK\r\n`, Prism.languages.redis);
+    it('should tokenize a simple string', () => {
+      const tokens = tokenize(raw`+OK\r\n`);
 
-      expect(tokens).toMatchObject([
-        token('string', [
-          token('keyword', '+'),
-          'OK',
-          token('punctuation', '\\r\\n')
-        ])
-      ]);
+      expect(tokens).toMatchObject([string([keyword('+'), 'OK', crlf])]);
     });
 
-    it('should parse an error', () => {
-      const tokens = Prism.tokenize(
-        raw`-ERR Protocol error: expected '$', got ' '\r\n`,
-        Prism.languages.redis
+    it('should tokenize an error', () => {
+      const tokens = tokenize(
+        raw`-ERR Protocol error: expected '$', got ' '\r\n`
       );
 
       expect(tokens).toMatchObject([
-        token('string', [
-          token('keyword', '-'),
+        string([
+          keyword('-'),
           `ERR Protocol error: expected '$', got ' '`,
-          token('punctuation', '\\r\\n')
+          crlf
         ])
       ]);
     });
 
-    it('should parse an integer', () => {
-      const tokens = Prism.tokenize(raw`:1337\r\n`, Prism.languages.redis);
+    it('should tokenize an integer', () => {
+      const tokens = tokenize(raw`:1337\r\n`);
+
+      expect(tokens).toMatchObject([number([keyword(':'), '1337', crlf])]);
+    });
+
+    it('should tokenize a negative integer', () => {
+      const tokens = tokenize(raw`:-1337\r\n`);
+
+      expect(tokens).toMatchObject([number([keyword(':'), '-1337', crlf])]);
+    });
+
+    it('should tokenize a bulk string', () => {
+      const tokens = tokenize(raw`$3\r\nGET\r\n`);
 
       expect(tokens).toMatchObject([
-        token('number', [
-          token('keyword', ':'),
-          '1337',
-          token('punctuation', '\\r\\n')
-        ])
+        number([keyword('$'), '3', crlf]),
+        string(['GET', crlf])
       ]);
     });
 
-    it('should parse a negative integer', () => {
-      const tokens = Prism.tokenize(raw`:-1337\r\n`, Prism.languages.redis);
+    it('should tokenize an array', () => {
+      const tokens = tokenize(raw`*2\r\n:10\r\n:20\r\n`);
 
       expect(tokens).toMatchObject([
-        token('number', [
-          token('keyword', ':'),
-          '-1337',
-          token('punctuation', '\\r\\n')
-        ])
+        number([keyword('*'), '2', crlf]),
+        number([keyword(':'), '10', crlf]),
+        number([keyword(':'), '20', crlf])
       ]);
     });
 
-    it('should parse a bulk string', () => {
-      const tokens = Prism.tokenize(raw`$3\r\nGET\r\n`, Prism.languages.redis);
-
-      expect(tokens).toMatchObject([
-        token('number', [
-          token('keyword', '$'),
-          '3',
-          token('punctuation', '\\r\\n')
-        ]),
-        token('string', ['GET', token('punctuation', '\\r\\n')])
-      ]);
-    });
-
-    it('should parse an array', () => {
-      const tokens = Prism.tokenize(
-        raw`*2\r\n:10\r\n:20\r\n`,
-        Prism.languages.redis
-      );
-
-      expect(tokens).toMatchObject([
-        token('number', [
-          token('keyword', '*'),
-          '2',
-          token('punctuation', '\\r\\n')
-        ]),
-        token('number', [
-          token('keyword', ':'),
-          '10',
-          token('punctuation', '\\r\\n')
-        ]),
-        token('number', [
-          token('keyword', ':'),
-          '20',
-          token('punctuation', '\\r\\n')
-        ])
-      ]);
-    });
-
-    it('should parse multiple lines', () => {
-      const tokens = Prism.tokenize(
+    it('should tokenize multiple lines', () => {
+      const tokens = tokenize(
         [
           raw`*3\r\n`,
           raw`$3\r\n`,
@@ -118,40 +86,23 @@ describe('Prism', () => {
           raw`mykey\r\n`,
           raw`$7\r\n`,
           raw`myvalue\r\n`
-        ].join('\n'),
-        Prism.languages.redis
+        ].join('\n')
       );
 
       expect(tokens).toMatchObject([
-        token('number', [
-          token('keyword', '*'),
-          '3',
-          token('punctuation', '\\r\\n')
-        ]),
+        number([keyword('*'), '3', crlf]),
         '\n',
-        token('number', [
-          token('keyword', '$'),
-          '3',
-          token('punctuation', '\\r\\n')
-        ]),
+        number([keyword('$'), '3', crlf]),
         '\n',
-        token('string', ['SET', token('punctuation', '\\r\\n')]),
+        string(['SET', crlf]),
         '\n',
-        token('number', [
-          token('keyword', '$'),
-          '5',
-          token('punctuation', '\\r\\n')
-        ]),
+        number([keyword('$'), '5', crlf]),
         '\n',
-        token('string', ['mykey', token('punctuation', '\\r\\n')]),
+        string(['mykey', crlf]),
         '\n',
-        token('number', [
-          token('keyword', '$'),
-          '7',
-          token('punctuation', '\\r\\n')
-        ]),
+        number([keyword('$'), '7', crlf]),
         '\n',
-        token('string', ['myvalue', token('punctuation', '\\r\\n')])
+        string(['myvalue', crlf])
       ]);
     });
   });
