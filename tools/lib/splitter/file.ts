@@ -34,12 +34,17 @@ export type Line = LineText | LineTagStart | LineTagEnd;
 export class File {
   constructor(
     private _path: string,
+    private _language: string,
     private _lines: Line[],
     private _tags: Record<string, Tag>
   ) {}
 
   path(): string {
     return this._path;
+  }
+
+  language(): string {
+    return this._language;
   }
 
   tags(): Record<string, Tag> {

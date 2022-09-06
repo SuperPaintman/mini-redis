@@ -332,7 +332,7 @@ export class MagicLineParser {
 }
 
 export class FileParser {
-  parse(path: string, source: string): File {
+  parse(path: string, language: string, source: string): File {
     const stack: Tag[] = [];
     const tags: Record<string, Tag> = {};
     let lines: Line[] = [];
@@ -569,6 +569,6 @@ export class FileParser {
       });
     }
 
-    return new File(path, lines, tags);
+    return new File(path, language, lines, tags);
   }
 }
