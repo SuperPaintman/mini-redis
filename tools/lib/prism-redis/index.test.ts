@@ -19,6 +19,7 @@ const keyword = (content: Token | Token[]) => token('keyword', content);
 const punctuation = (content: Token | Token[]) => token('punctuation', content);
 const crlf = punctuation(raw`\r\n`);
 
+/* Tests */
 describe('Prism', () => {
   describe('Redis', () => {
     it('should work', () => {
