@@ -110,6 +110,7 @@ export function codeSnippet(
         );
       }
 
+      const { langPrefix = 'language-' } = this.parser.options;
       const language = file.language();
 
       const lines = format(file.lines().join('\n'), language);
@@ -125,14 +126,13 @@ export function codeSnippet(
       let res: string = '';
 
       if (before === 0 && after === 0) {
-        res += `<pre><code class="language-${language}">${code}</code></pre>`;
+        res += `<pre><code class="${langPrefix}${language}">${code}</code></pre>`;
       } else {
         const codeLines = code.split('\n');
         const linesBefore = codeLines.slice(0, before);
         const linesHighlighted = codeLines.slice(before, -1 * after);
         const linesAfter = codeLines.slice(-1 * after);
-
-        res += `<pre><code class="language-${language}">`;
+        res += `<pre><code class="${langPrefix}${language}">`;
         if (linesBefore.length > 0) {
           res += `<div class="dimmed">${linesBefore.join('\n')}\n</div>`;
         }

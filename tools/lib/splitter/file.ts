@@ -153,4 +153,14 @@ export class File {
       this.enable(tag.replaces);
     }
   }
+
+  disableAll(): void {
+    for (const name in this._tags) {
+      if (!this._tags.hasOwnProperty(name)) {
+        continue;
+      }
+
+      this._tags[name].enabled = false;
+    }
+  }
 }

@@ -27,6 +27,10 @@ export class Workspace {
     return this._tags[name];
   }
 
+  files(): File[] {
+    return Object.values(this._files);
+  }
+
   enable(name: string): void {
     if (!this._tags.hasOwnProperty(name)) {
       // TODO.
