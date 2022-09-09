@@ -1,3 +1,4 @@
+//> stage "Redis Protocol"
 package radish_test
 
 import (

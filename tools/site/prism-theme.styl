@@ -1,0 +1,120 @@
+/*!
+ * This theme based on Atom One Light and Doom One Light themes.
+ *
+ * See: https://atom.io/themes/one-light-ui
+ * See: https://github.com/doomemacs/themes/blob/master/themes/doom-one-light-theme.el
+ */
+
+$background = #faf8f5
+$foreground = #383a42
+
+$base0 = #f0f0f0
+$base1 = #e7e7e7
+$base2 = #dfdfdf
+$base3 = #c6c7c7
+$base4 = #9ca0a4
+$base5 = #383a42
+$base6 = #202328
+$base7 = #1c1f24
+$base8 = #1b2229
+
+$grey = $base4
+$red = #e45649
+$orange = #da8548
+$green = #50a14f
+$teal = #4db5bd
+$yellow = #986801
+$blue = #4078f2
+$dark-blue = #a0bcf8
+$magenta = #a626a4
+$violet = #b751b6
+$cyan = #0184bc
+$dark-cyan = #005478
+
+pre {
+  background: $background;
+  color: $foreground;
+}
+
+pre,
+code {
+	font-size: 14px;
+	line-height: 20px;
+}
+
+pre > code .highlighted {
+  background: #f5f3f0;
+}
+
+pre > code .dimmed,
+pre > code .dimmed .token {
+  color: #bab8b7;
+}
+
+/* Inline code */
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+	color: $grey;
+}
+
+.token.punctuation {
+	color: $base4;
+}
+
+.token.property,
+.token.tag,
+.token.boolean,
+.token.number,
+.token.constant,
+.token.symbol,
+.token.deleted {
+	color: $violet;
+}
+
+.token.selector,
+.token.attr-name,
+.token.string,
+.token.char,
+.token.builtin,
+.token.inserted {
+	color: $green;
+}
+
+.token.operator,
+.token.entity,
+.token.url,
+.language-css .token.string,
+.style .token.string {
+	color: $blue;
+}
+
+.token.atrule,
+.token.attr-value,
+.token.keyword {
+	color: $blue;
+}
+
+.token.function,
+.token.class-name {
+	color: $magenta;
+}
+
+.token.regex,
+.token.important,
+.token.variable {
+	color: $magenta;
+}
+
+.token.important,
+.token.bold {
+	font-weight: bold;
+}
+.token.italic {
+	font-style: italic;
+}
+
+.token.entity {
+	cursor: help;
+}
