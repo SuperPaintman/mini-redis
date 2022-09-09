@@ -274,12 +274,12 @@ export class BookPlugin implements WebpackPluginInstance {
       }
 
       // Skip if nothing was changed.
-      if (!changed) {
-        logger.debug('Book is not changed');
-        return;
-      }
-      logger.debug('Book is changed');
-      changed = false;
+      // if (!changed) {
+      //   logger.debug('Book is not changed');
+      //   return;
+      // }
+      // logger.debug('Book is changed');
+      // changed = false;
 
       // Set-up marked.
       (marked as any).defaults = marked.getDefaults();
@@ -300,69 +300,119 @@ export class BookPlugin implements WebpackPluginInstance {
         },
         (compilationAssets, cb) => {
           // Compile chapters.
+          const chapters: Array<{
+            meta: {
+              title: string;
+              slug: string;
+              headings: Array<{ text: string; slug: string }>;
+              draft: boolean;
+              prev: string | null;
+              next: string | null;
+            };
+            content: string;
+          }> = [];
+
           if (manifest) {
-            // Pages.
-            const pages = [];
+            // Collect chapters meta data.
+            const chaptersSlugger = new marked.Slugger();
+
             for (const chapter of manifest.chapters) {
               const path = resolve(manifestDirname, chapter);
 
               const cached = chaptersContents[path];
-              if (cached && cached.type === 'file') {
-                const { meta, content } = cached;
-                const slug = meta.slug || basename(path, '.md');
+              if (!cached || cached.type !== 'file') {
+                continue;
+              }
 
-                pages.push(slug);
+              const { meta, content } = cached;
 
-                const html = marked(content, this._options.marked);
+              const slugger = new marked.Slugger();
+              const tokens = marked.Lexer.lex(content, this._options.marked);
 
-                compilation.emitAsset(
-                  join('api/pages', `${slug}.json`),
-                  new RawSource(
-                    JSON.stringify(
-                      {
-                        meta,
-                        html
-                      },
-                      null,
-                      isProductionLikeMode ? 0 : 2
-                    )
+              const headings = (tokens as marked.Tokens.Heading[])
+                .filter((token) => token.type === 'heading')
+                .map((token) => ({
+                  text: token.text,
+                  level: token.depth,
+                  slug: slugger.slug(token.text)
+                }));
+
+              const title = headings.find((h) => h.level === 1)?.text;
+              const slug =
+                (meta.slug as string | undefined) ??
+                chaptersSlugger.slug(title ?? basename(path, '.md'));
+
+              chapters.push({
+                meta: {
+                  title: title ?? slug,
+                  slug,
+                  headings: headings.filter((h) => h.level === 2),
+                  draft: false,
+                  next: null,
+                  prev: null,
+                  ...meta
+                },
+                content
+              });
+            }
+
+            // Collect prev/next links.
+            for (let i = 0; i < chapters.length; i++) {
+              chapters[i].meta.prev = chapters[i - 1]?.meta.slug ?? null;
+              chapters[i].meta.next = chapters[i + 1]?.meta.slug ?? null;
+            }
+
+            // Build chapters.
+            for (const chapter of chapters) {
+              const { meta, content } = chapter;
+
+              const html = marked(content, this._options.marked);
+
+              compilation.emitAsset(
+                join('api', 'chapters', `${meta.slug}.json`),
+                new RawSource(
+                  JSON.stringify(
+                    {
+                      meta,
+                      html
+                    },
+                    null,
+                    isProductionLikeMode ? 0 : 2
                   )
-                );
+                )
+              );
 
+              if (!isProductionLikeMode) {
                 compilation.emitAsset(
-                  join('api/pages', `${slug}.html`),
-                  new RawSource(html)
+                  join('api', 'chapters', `${meta.slug}.html`),
+                  new RawSource(html),
+                  {
+                    development: true
+                  }
                 );
               }
             }
-
-            // Index.
-            compilation.emitAsset(
-              'api/pages/_index.json',
-              new RawSource(
-                JSON.stringify(
-                  {
-                    pages
-                  },
-                  null,
-                  isProductionLikeMode ? 0 : 2
-                )
-              )
-            );
-          } else {
-            compilation.emitAsset(
-              'api/pages/_index.json',
-              new RawSource(
-                JSON.stringify(
-                  {
-                    pages: []
-                  },
-                  null,
-                  isProductionLikeMode ? 0 : 2
-                )
-              )
-            );
           }
+
+          // Index.
+          compilation.emitAsset(
+            join('api', 'chapters', 'index.json'),
+            new RawSource(
+              JSON.stringify(
+                {
+                  chapters: chapters.map(
+                    ({ meta: { title, slug, draft } }) => ({
+                      title,
+                      slug,
+                      draft
+                    })
+                  )
+                },
+                null,
+                isProductionLikeMode ? 0 : 2
+              )
+            )
+          );
 
           cb();
         }

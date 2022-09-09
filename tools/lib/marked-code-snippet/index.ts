@@ -123,16 +123,16 @@ export function codeSnippet(
       const code = highlight(snippet, language);
 
       // Build a HTML string.
-      let res: string = '';
+      let res: string = `<pre><code class="${langPrefix}${language}">`;
 
       if (before === 0 && after === 0) {
-        res += `<pre><code class="${langPrefix}${language}">${code}</code></pre>`;
+        res += code;
       } else {
         const codeLines = code.split('\n');
         const linesBefore = codeLines.slice(0, before);
         const linesHighlighted = codeLines.slice(before, -1 * after);
         const linesAfter = codeLines.slice(-1 * after);
-        res += `<pre><code class="${langPrefix}${language}">`;
+
         if (linesBefore.length > 0) {
           res += `<div class="dimmed">${linesBefore.join('\n')}\n</div>`;
         }
@@ -144,9 +144,9 @@ export function codeSnippet(
         if (linesAfter.length > 0) {
           res += `<div class="dimmed">${linesAfter.join('\n')}\n</div>`;
         }
-
-        res += '</pre></code>';
       }
+
+      res += '</pre></code>';
 
       res += `<div><em>${file.path()}</em></div>`;
 

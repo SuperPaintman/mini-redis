@@ -111,7 +111,6 @@ module.exports = {
       /* Svelte */
       {
         test: /\.svelte$/,
-        issuerLayer: 'client',
         use: {
           loader: 'svelte-loader',
           options: {

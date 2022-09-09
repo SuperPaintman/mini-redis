@@ -3,36 +3,7 @@ title: Welcome
 draft: true
 ---
 
-<style>
-
-pre {
-  background-color: #faf8f5;
-}
-
-pre > code {
-  text-shadow: none !important;
-}
-
-pre > code .dimmed,
-pre > code .dimmed .token {
-  color: #bab8b7 !important;
-}
-
-pre > code .highlighted {
-  margin: -2px -12px;
-  padding: 2px 10px;
-
-  border-left: solid 2px #dad8d6;
-  border-right: solid 2px #dad8d6;
-
-  background-color: #f5f3f0;
-}
-
-</style>
-
-<link href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism.css" rel="stylesheet" />
-
-# Hello
+## Hello
 
 ```go
 // HI
@@ -74,15 +45,15 @@ $-1\r\n
 
 ^snippet radish-cli-read-response-array: before=3, after=2
 
-# Test
+## Test
 
 ^snippet radish-cli-read-response-array-import-math: before=1, after=1
 
-# Test
+## Test
 
 ^snippet radish-cli-read-response-array-import-str: before=1, after=2
 
-# Writer
+## Writer
 
 ^snippet writer
 
@@ -124,7 +95,7 @@ $-1\r\n
 
 ^snippet writer-write-array
 
-# Reader
+## Reader
 
 ^snippet reader
 
